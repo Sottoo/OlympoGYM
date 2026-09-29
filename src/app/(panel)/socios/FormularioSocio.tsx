@@ -7,13 +7,16 @@ import { estadoInicial } from "@/presentation/acciones/estadoFormulario";
 import { BotonEnviar } from "@/presentation/components/BotonEnviar";
 import { MensajeError } from "@/presentation/components/Mensajes";
 import { accionEditarSocio, accionRegistrarSocio } from "./acciones";
+import { CampoFoto } from "./CampoFoto";
 
 interface Props {
   /** Si viene, el formulario edita a ese socio; si no, registra uno nuevo. */
   socio?: DatosNuevoSocio & { id: string };
+  /** Enlace temporal de la foto actual, si tiene. */
+  fotoUrl?: string | null;
 }
 
-export function FormularioSocio({ socio }: Props) {
+export function FormularioSocio({ socio, fotoUrl }: Props) {
   const [estado, accion] = useActionState(socio ? accionEditarSocio : accionRegistrarSocio, estadoInicial);
   const v = estado.valores ?? (socio ? aTexto(socio) : {});
 
@@ -34,8 +37,30 @@ export function FormularioSocio({ socio }: Props) {
               <label htmlFor="apellidos" className="etiqueta">Apellidos</label>
               <input id="apellidos" name="apellidos" required autoComplete="off" className="campo" defaultValue={v.apellidos} />
             </div>
+            <div>
+              <label htmlFor="fechaNacimiento" className="etiqueta">
+                Fecha de nacimiento <span className="font-normal text-gris">(opcional)</span>
+              </label>
+              <input
+                id="fechaNacimiento"
+                name="fechaNacimiento"
+                type="date"
+                min="1900-01-01"
+                max={new Date().toLocaleDateString("en-CA")}
+                className="campo"
+                defaultValue={v.fechaNacimiento}
+              />
+              <p className="ayuda">La edad se calcula sola.</p>
+            </div>
           </div>
         </fieldset>
+
+        <div className="border-t border-linea pt-6">
+          <fieldset>
+            <legend className="rotulo mb-4">Foto</legend>
+            <CampoFoto fotoActual={fotoUrl} />
+          </fieldset>
+        </div>
 
         <div className="border-t border-linea pt-6">
           <fieldset>
@@ -45,10 +70,6 @@ export function FormularioSocio({ socio }: Props) {
                 <label htmlFor="telefono" className="etiqueta">Celular (WhatsApp)</label>
                 <input id="telefono" name="telefono" type="tel" inputMode="tel" required autoComplete="off" className="campo" defaultValue={v.telefono} />
                 <p className="ayuda">10 dígitos. Aquí se le mandan los avisos de vencimiento.</p>
-              </div>
-              <div>
-                <label htmlFor="email" className="etiqueta">Correo <span className="font-normal text-gris">(opcional)</span></label>
-                <input id="email" name="email" type="email" autoComplete="off" className="campo" defaultValue={v.email} />
               </div>
             </div>
           </fieldset>
@@ -72,8 +93,8 @@ function aTexto(socio: DatosNuevoSocio): Record<string, string> {
   return {
     nombre: socio.nombre,
     apellidos: socio.apellidos,
-    email: socio.email ?? "",
     telefono: socio.telefono ?? "",
+    fechaNacimiento: socio.fechaNacimiento ?? "",
     notas: socio.notas ?? "",
   };
 }

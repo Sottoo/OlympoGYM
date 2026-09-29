@@ -8,9 +8,11 @@ interface Props {
   /** Etiquetas junto al título (estado, categoría…). */
   etiquetas?: React.ReactNode;
   acciones?: React.ReactNode;
+  /** Foto o ícono a la izquierda del título. */
+  imagen?: React.ReactNode;
 }
 
-export function Encabezado({ titulo, descripcion, volver, etiquetas, acciones }: Props) {
+export function Encabezado({ titulo, descripcion, volver, etiquetas, acciones, imagen }: Props) {
   return (
     <header className="space-y-3">
       {volver && (
@@ -20,12 +22,15 @@ export function Encabezado({ titulo, descripcion, volver, etiquetas, acciones }:
         </Link>
       )}
       <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-4">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-            <h1 className="titulo">{titulo}</h1>
-            {etiquetas}
+        <div className="flex min-w-0 items-center gap-4">
+          {imagen}
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+              <h1 className="titulo">{titulo}</h1>
+              {etiquetas}
+            </div>
+            {descripcion && <div className="mt-2 text-gris">{descripcion}</div>}
           </div>
-          {descripcion && <div className="mt-2 text-gris">{descripcion}</div>}
         </div>
         {acciones && <div className="flex flex-wrap gap-2">{acciones}</div>}
       </div>

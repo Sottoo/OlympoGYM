@@ -3,8 +3,9 @@ export interface FilaSocio {
   id: string;
   nombre: string;
   apellidos: string;
-  email: string | null;
   telefono: string | null;
+  fecha_nacimiento: string | null;
+  foto: string | null;
   notas: string | null;
   activo: boolean;
   fecha_baja: string | null;

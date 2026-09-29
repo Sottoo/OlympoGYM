@@ -92,12 +92,6 @@ const TRAZOS = {
       <path d="M12 17h.01" />
     </>
   ),
-  correo: (
-    <>
-      <rect x="2" y="4" width="20" height="16" rx="2" />
-      <path d="m22 7-10 6L2 7" />
-    </>
-  ),
   telefono: (
     <>
       <rect x="6" y="2" width="12" height="20" rx="2" />

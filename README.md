@@ -95,7 +95,11 @@ se enteran.
   **Avisos** (con un contador en el menú) y se mandan a mano: el botón abre
   WhatsApp con el mensaje escrito. Nunca salen duplicados, no aparecen si el
   socio ya renovó, y si un día no se abrió el sistema el aviso sigue pendiente.
-- Todo socio necesita celular (es el único canal de avisos); el correo es opcional.
+- Todo socio necesita celular (es el único canal de avisos). No se pide correo.
+- Fecha de nacimiento y foto son opcionales. La edad se calcula sola y la ficha
+  avisa cuando el socio cumple años. La foto se toma con la cámara o se sube un
+  archivo, y la app la recorta y reduce (~50 KB) antes de guardarla en una
+  carpeta privada de Supabase Storage.
 - **Dar de baja no borra nada**: el socio conserva su historial, deja de contar
   como activo y ya no recibe avisos. Se guarda el motivo y se puede reactivar.
   A un socio dado de baja no se le puede cobrar un plan hasta reactivarlo.
@@ -113,7 +117,8 @@ se enteran.
    `supabase/migrations/0001_esquema_inicial.sql` y ejecútalo.
    Luego ejecuta `supabase/migrations/0002_bajas_e_inventario.sql` (bajas,
    inventario y ventas), `supabase/migrations/0003_avisos_whatsapp.sql`
-   (avisos por WhatsApp) y por último `supabase/seed.sql` para crear los
+   (avisos por WhatsApp), `supabase/migrations/0004_nacimiento_y_foto.sql`
+   (fecha de nacimiento y fotos) y por último `supabase/seed.sql` para crear los
    planes iniciales.
 3. En **Authentication > Sign In / Providers**, desactiva *Allow new users to sign up*.
    Así nadie puede crearse una cuenta por su cuenta.
@@ -147,7 +152,8 @@ se enteran.
 
 Cada día, la primera vez que se abre el programa, se guarda una copia completa
 de la base en `Documentos\Olimpo GYM\Respaldos\respaldo-AAAA-MM-DD.json`. Se
-conservan los últimos 60 días. En el Resumen también hay un botón **Descargar
+conservan los últimos 60 días. Las fotos de los socios se copian a la
+subcarpeta `fotos` (solo las nuevas cada día). En el Resumen también hay un botón **Descargar
 respaldo** para sacar una copia al momento (por ejemplo, a una USB).
 
 Si el programa no abre o algo falla, la bitácora del servidor interno está en

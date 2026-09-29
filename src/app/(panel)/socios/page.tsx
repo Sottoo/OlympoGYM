@@ -66,7 +66,7 @@ export default async function PaginaSocios({ searchParams }: { searchParams: Pro
           <label htmlFor="q" className="sr-only">Buscar socio</label>
           <div className="relative flex-1">
             <Icono nombre="buscar" className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-gris" />
-            <input id="q" name="q" defaultValue={q} placeholder="Nombre, correo o teléfono" className="campo pl-8" />
+            <input id="q" name="q" defaultValue={q} placeholder="Nombre o celular" className="campo pl-8" />
           </div>
           <button className="boton-secundario">Buscar</button>
           {q && <Link href={hrefFiltro(filtro, false)} className="boton-secundario">Limpiar</Link>}
@@ -92,7 +92,6 @@ export default async function PaginaSocios({ searchParams }: { searchParams: Pro
                 <tr key={socio.id}>
                   <td>
                     <Link href={`/socios/${socio.id}`} className="enlace">{nombreCompleto(socio)}</Link>
-                    {socio.email && <span className="block text-sm text-gris">{socio.email}</span>}
                   </td>
                   <td className="whitespace-nowrap text-tinta-suave tabular-nums">
                     {socio.telefono ? formatearTelefono(socio.telefono) : <span className="text-gris">—</span>}

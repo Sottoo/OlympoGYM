@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 
 export default async function PaginaEditarSocio({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { socio } = await (await casosDeUso()).obtenerDetalleSocio.ejecutar(id).catch((e) => {
+  const { socio, fotoUrl } = await (await casosDeUso()).obtenerDetalleSocio.ejecutar(id).catch((e) => {
     if (e instanceof NoEncontrado) notFound();
     throw e;
   });
@@ -19,7 +19,7 @@ export default async function PaginaEditarSocio({ params }: { params: Promise<{ 
   return (
     <div className="space-y-6">
       <Encabezado titulo="Editar datos" volver={{ href: `/socios/${id}`, texto: nombreCompleto(socio) }} />
-      <FormularioSocio socio={socio} />
+      <FormularioSocio socio={socio} fotoUrl={fotoUrl} />
     </div>
   );
 }

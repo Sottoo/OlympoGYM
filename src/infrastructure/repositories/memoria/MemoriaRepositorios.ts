@@ -12,6 +12,7 @@ import type { ProductoRepository } from "@/domain/repositories/ProductoRepositor
 import type { SocioRepository } from "@/domain/repositories/SocioRepository";
 import type { SuscripcionRepository } from "@/domain/repositories/SuscripcionRepository";
 import type { VentaRepository } from "@/domain/repositories/VentaRepository";
+import type { AlmacenFotos } from "@/domain/services/AlmacenFotos";
 import { ErrorDeDominio, NoEncontrado } from "@/domain/shared/ErrorDeDominio";
 import type { FechaISO } from "@/domain/shared/fechas";
 import { type AlmacenMemoria, ahora, nuevoId } from "./AlmacenMemoria";
@@ -34,7 +35,7 @@ export class MemoriaSocioRepository implements SocioRepository {
 
   async listar(filtro?: { busqueda?: string }): Promise<Socio[]> {
     return this.db.socios
-      .filter((s) => coincide(filtro?.busqueda, [s.nombre, s.apellidos, `${s.nombre} ${s.apellidos}`, s.email, s.telefono]))
+      .filter((s) => coincide(filtro?.busqueda, [s.nombre, s.apellidos, `${s.nombre} ${s.apellidos}`, s.telefono]))
       .sort((a, b) => a.nombre.localeCompare(b.nombre));
   }
 
@@ -43,14 +44,12 @@ export class MemoriaSocioRepository implements SocioRepository {
   }
 
   async crear(datos: DatosNuevoSocio): Promise<Socio> {
-    this.verificarCorreoUnico(datos.email);
-    const socio: Socio = { ...datos, id: nuevoId(), activo: true, fechaBaja: null, motivoBaja: null, creadoEn: ahora() };
+    const socio: Socio = { ...datos, id: nuevoId(), foto: null, activo: true, fechaBaja: null, motivoBaja: null, creadoEn: ahora() };
     this.db.socios.push(socio);
     return socio;
   }
 
   async actualizar(id: string, datos: DatosNuevoSocio): Promise<Socio> {
-    this.verificarCorreoUnico(datos.email, id);
     const socio = this.db.socios.find((s) => s.id === id);
     if (!socio) throw new NoEncontrado("El socio");
     Object.assign(socio, datos);
@@ -67,11 +66,28 @@ export class MemoriaSocioRepository implements SocioRepository {
     if (socio) Object.assign(socio, { activo: true, fechaBaja: null, motivoBaja: null });
   }
 
-  /** Igual que el índice único de la base de datos real. */
-  private verificarCorreoUnico(email: string | null, excepto?: string) {
-    if (email && this.db.socios.some((s) => s.id !== excepto && s.email === email)) {
-      throw new ErrorDeDominio("Ya hay otro socio registrado con ese correo.");
-    }
+  async cambiarFoto(id: string, ruta: string | null) {
+    const socio = this.db.socios.find((s) => s.id === id);
+    if (socio) socio.foto = ruta;
+  }
+}
+
+/** Fotos del modo demo: se guardan como data URL y se pierden al cerrar. */
+export class MemoriaAlmacenFotos implements AlmacenFotos {
+  constructor(private readonly db: AlmacenMemoria) {}
+
+  async guardar(socioId: string, imagen: Uint8Array, tipo: string) {
+    const ruta = `${socioId}/${Date.now()}`;
+    this.db.fotos.set(ruta, `data:${tipo};base64,${Buffer.from(imagen).toString("base64")}`);
+    return ruta;
+  }
+
+  async urlTemporal(ruta: string) {
+    return this.db.fotos.get(ruta) ?? null;
+  }
+
+  async borrar(ruta: string) {
+    this.db.fotos.delete(ruta);
   }
 }
 

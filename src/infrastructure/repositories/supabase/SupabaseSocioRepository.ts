@@ -12,7 +12,7 @@ export class SupabaseSocioRepository implements SocioRepository {
     let consulta = this.db.from("socios").select("*").order("nombre");
     const texto = filtro?.busqueda?.trim().replace(/[%,()]/g, "");
     if (texto) {
-      consulta = consulta.or(`nombre.ilike.%${texto}%,apellidos.ilike.%${texto}%,email.ilike.%${texto}%,telefono.ilike.%${texto}%`);
+      consulta = consulta.or(`nombre.ilike.%${texto}%,apellidos.ilike.%${texto}%,telefono.ilike.%${texto}%`);
     }
     return verificar<FilaSocio[]>(await consulta).map(aSocio);
   }
@@ -23,12 +23,12 @@ export class SupabaseSocioRepository implements SocioRepository {
   }
 
   async crear(datos: DatosNuevoSocio): Promise<Socio> {
-    const fila = verificar<FilaSocio>(await this.db.from("socios").insert(datos).select().single());
+    const fila = verificar<FilaSocio>(await this.db.from("socios").insert(aFila(datos)).select().single());
     return aSocio(fila);
   }
 
   async actualizar(id: string, datos: DatosNuevoSocio): Promise<Socio> {
-    const fila = verificar<FilaSocio>(await this.db.from("socios").update(datos).eq("id", id).select().single());
+    const fila = verificar<FilaSocio>(await this.db.from("socios").update(aFila(datos)).eq("id", id).select().single());
     return aSocio(fila);
   }
 
@@ -39,4 +39,16 @@ export class SupabaseSocioRepository implements SocioRepository {
   async reactivar(id: string): Promise<void> {
     verificar(await this.db.from("socios").update({ activo: true, fecha_baja: null, motivo_baja: null }).eq("id", id));
   }
+
+  async cambiarFoto(id: string, ruta: string | null): Promise<void> {
+    verificar(await this.db.from("socios").update({ foto: ruta }).eq("id", id));
+  }
 }
+
+const aFila = (d: DatosNuevoSocio) => ({
+  nombre: d.nombre,
+  apellidos: d.apellidos,
+  telefono: d.telefono,
+  fecha_nacimiento: d.fechaNacimiento,
+  notas: d.notas,
+});

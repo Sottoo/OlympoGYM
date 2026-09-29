@@ -18,7 +18,13 @@ import {
 } from "@/application/use-cases/inventario/GestionarProductos";
 import { RegistrarMovimiento } from "@/application/use-cases/inventario/RegistrarMovimiento";
 import { CambiarEstadoPlan, CrearPlan, ListarPlanes } from "@/application/use-cases/planes/GestionarPlanes";
-import { DarDeBajaSocio, EditarSocio, ReactivarSocio } from "@/application/use-cases/socios/GestionarSocio";
+import {
+  CambiarFotoSocio,
+  DarDeBajaSocio,
+  EditarSocio,
+  QuitarFotoSocio,
+  ReactivarSocio,
+} from "@/application/use-cases/socios/GestionarSocio";
 import { ListarSocios } from "@/application/use-cases/socios/ListarSocios";
 import { ObtenerDetalleSocio } from "@/application/use-cases/socios/ObtenerDetalleSocio";
 import { RegistrarSocio } from "@/application/use-cases/socios/RegistrarSocio";
@@ -31,10 +37,12 @@ import type { ProductoRepository } from "@/domain/repositories/ProductoRepositor
 import type { SocioRepository } from "@/domain/repositories/SocioRepository";
 import type { SuscripcionRepository } from "@/domain/repositories/SuscripcionRepository";
 import type { VentaRepository } from "@/domain/repositories/VentaRepository";
+import type { AlmacenFotos } from "@/domain/services/AlmacenFotos";
 import { entorno, modoDemo } from "./config/entorno";
 import { RelojSistema } from "./RelojSistema";
 import { obtenerAlmacen } from "./repositories/memoria/AlmacenMemoria";
 import {
+  MemoriaAlmacenFotos,
   MemoriaInventarioRepository,
   MemoriaPagoRepository,
   MemoriaPlanRepository,
@@ -43,6 +51,7 @@ import {
   MemoriaSuscripcionRepository,
   MemoriaVentaRepository,
 } from "./repositories/memoria/MemoriaRepositorios";
+import { SupabaseAlmacenFotos } from "./repositories/supabase/SupabaseAlmacenFotos";
 import { SupabaseInventarioRepository } from "./repositories/supabase/SupabaseInventarioRepository";
 import { SupabasePagoRepository } from "./repositories/supabase/SupabasePagoRepository";
 import { SupabasePlanRepository } from "./repositories/supabase/SupabasePlanRepository";
@@ -60,6 +69,7 @@ interface Repositorios {
   productos: ProductoRepository;
   inventario: InventarioRepository;
   ventas: VentaRepository;
+  fotos: AlmacenFotos;
 }
 
 type ClienteSupabase = ConstructorParameters<typeof SupabaseSocioRepository>[0];
@@ -73,6 +83,7 @@ function repositoriosSupabase(db: ClienteSupabase): Repositorios {
     productos: new SupabaseProductoRepository(db),
     inventario: new SupabaseInventarioRepository(db),
     ventas: new SupabaseVentaRepository(db),
+    fotos: new SupabaseAlmacenFotos(db),
   };
 }
 
@@ -86,6 +97,7 @@ function repositoriosMemoria(): Repositorios {
     productos: new MemoriaProductoRepository(db),
     inventario: new MemoriaInventarioRepository(db),
     ventas: new MemoriaVentaRepository(db),
+    fotos: new MemoriaAlmacenFotos(db),
   };
 }
 
@@ -99,9 +111,11 @@ export async function casosDeUso() {
     obtenerResumen: new ObtenerResumen(r.socios, r.suscripciones, r.pagos, r.productos, r.ventas, reloj),
     // Socios
     listarSocios: new ListarSocios(r.socios, r.suscripciones, reloj),
-    obtenerDetalleSocio: new ObtenerDetalleSocio(r.socios, r.suscripciones, r.pagos, reloj),
-    registrarSocio: new RegistrarSocio(r.socios),
-    editarSocio: new EditarSocio(r.socios),
+    obtenerDetalleSocio: new ObtenerDetalleSocio(r.socios, r.suscripciones, r.pagos, r.fotos, reloj),
+    registrarSocio: new RegistrarSocio(r.socios, reloj),
+    editarSocio: new EditarSocio(r.socios, reloj),
+    cambiarFotoSocio: new CambiarFotoSocio(r.socios, r.fotos),
+    quitarFotoSocio: new QuitarFotoSocio(r.socios, r.fotos),
     darDeBajaSocio: new DarDeBajaSocio(r.socios, reloj),
     reactivarSocio: new ReactivarSocio(r.socios),
     // Planes y membresías

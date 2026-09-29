@@ -9,4 +9,5 @@ export interface SocioRepository {
   actualizar(id: string, datos: DatosNuevoSocio): Promise<Socio>;
   darDeBaja(id: string, fecha: FechaISO, motivo: string): Promise<void>;
   reactivar(id: string): Promise<void>;
+  cambiarFoto(id: string, ruta: string | null): Promise<void>;
 }

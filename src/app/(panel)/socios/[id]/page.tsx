@@ -24,6 +24,7 @@ export const dynamic = "force-dynamic";
 
 const AVISOS: Record<string, string> = {
   nuevo: "Socio registrado. Ahora asígnale un plan.",
+  "nuevo-sin-foto": "Socio registrado, pero la foto no se pudo subir. Revisa tu conexión y agrégala desde Editar.",
   pagado: "Pago registrado y plan activado.",
   editado: "Datos actualizados.",
   baja: "El socio quedó dado de baja. Su historial se conserva.",
@@ -44,7 +45,7 @@ export default async function PaginaSocio({ params, searchParams }: Props) {
     throw e;
   });
   const planes = await casos.listarPlanes.ejecutar(true);
-  const { socio, membresia, planActual, suscripciones, pagos } = detalle;
+  const { socio, fotoUrl, edad, cumpleHoy, membresia, planActual, suscripciones, pagos } = detalle;
   const vigente = membresia.estado === "vigente" || membresia.estado === "por_vencer";
   const totalPagado = pagos.reduce((t, p) => t + p.monto, 0);
   const nombre = nombreCompleto(socio);
@@ -55,6 +56,12 @@ export default async function PaginaSocio({ params, searchParams }: Props) {
         titulo={nombre}
         volver={{ href: socio.activo ? "/socios" : "/socios?filtro=bajas", texto: "Socios" }}
         etiquetas={<EstadoMembresia estado={membresia.estado} activo={socio.activo} />}
+        imagen={
+          fotoUrl && (
+            // eslint-disable-next-line @next/next/no-img-element -- enlace temporal de Storage, sin optimizar
+            <img src={fotoUrl} alt={`Foto de ${nombre}`} className="size-20 shrink-0 rounded-md border border-linea object-cover" />
+          )
+        }
         descripcion={
           <span className="flex flex-wrap gap-x-5 gap-y-1">
             {socio.telefono && (
@@ -63,10 +70,10 @@ export default async function PaginaSocio({ params, searchParams }: Props) {
                 {formatearTelefono(socio.telefono)}
               </span>
             )}
-            {socio.email && (
-              <span className="inline-flex items-center gap-1.5">
-                <Icono nombre="correo" className="size-4" />
-                {socio.email}
+            {edad !== null && (
+              <span>
+                {edad} años
+                {cumpleHoy && <strong className="ml-2 font-semibold text-tinta">¡Cumple años hoy!</strong>}
               </span>
             )}
           </span>

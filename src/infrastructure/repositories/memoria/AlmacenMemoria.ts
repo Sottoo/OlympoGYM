@@ -18,6 +18,8 @@ export interface AlmacenMemoria {
   suscripciones: Suscripcion[];
   pagos: Pago[];
   avisos: Set<string>;
+  /** Fotos de socios: ruta → data URL. */
+  fotos: Map<string, string>;
   productos: Producto[];
   movimientos: MovimientoInventario[];
   ventas: Venta[];
@@ -42,19 +44,19 @@ function crearDatosDeEjemplo(hoy: FechaISO): AlmacenMemoria {
   ];
   const [, mensual, trimestral, anual] = planes;
 
-  // [nombre, apellidos, correo, celular, días para vencer (null = sin plan), plan, baja?]
+  // [nombre, apellidos, nacimiento, celular, días para vencer (null = sin plan), plan, baja?]
   const personas: [string, string, string | null, string | null, number | null, Plan, { dias: number; motivo: string }?][] = [
-    ["Mariana", "López Herrera", "mariana.lopez@ejemplo.com", "5512345678", 1, mensual],
-    ["Jorge", "Ramírez Soto", "jorge.ramirez@ejemplo.com", "5587654321", 3, mensual],
+    ["Mariana", "López Herrera", "1994-03-12", "5512345678", 1, mensual],
+    ["Jorge", "Ramírez Soto", "1988-11-02", "5587654321", 3, mensual],
     ["Daniela", "Cruz Méndez", null, "3311223344", 6, trimestral],
-    ["Luis Fernando", "Ortega Ruiz", "luisf.ortega@ejemplo.com", "8122334455", 19, mensual],
-    ["Andrea", "Villalobos Paz", "andrea.vp@ejemplo.com", "5599887766", 64, trimestral],
-    ["Héctor", "Salinas Rivera", "hector.salinas@ejemplo.com", "5533445566", 241, anual],
-    ["Valeria", "Montes Ibarra", "valeria.montes@ejemplo.com", "5576543210", 12, mensual],
-    ["Ricardo", "Núñez Aguilar", "ricardo.nunez@ejemplo.com", "5544332211", -4, mensual],
+    ["Luis Fernando", "Ortega Ruiz", "2001-07-25", "8122334455", 19, mensual],
+    ["Andrea", "Villalobos Paz", "1997-01-30", "5599887766", 64, trimestral],
+    ["Héctor", "Salinas Rivera", "1979-05-18", "5533445566", 241, anual],
+    ["Valeria", "Montes Ibarra", "2005-09-09", "5576543210", 12, mensual],
+    ["Ricardo", "Núñez Aguilar", "1991-12-01", "5544332211", -4, mensual],
     ["Sofía", "Guerrero Lara", null, "4421122334", -13, mensual],
-    ["Emilio", "Treviño Castro", "emilio.trevino@ejemplo.com", "5566778899", null, mensual],
-    ["Paola", "Esquivel Rangel", "paola.esquivel@ejemplo.com", "5522113344", -40, mensual, { dias: 35, motivo: "Cambio de domicilio o de trabajo" }],
+    ["Emilio", "Treviño Castro", "1999-04-14", "5566778899", null, mensual],
+    ["Paola", "Esquivel Rangel", "1993-08-21", "5522113344", -40, mensual, { dias: 35, motivo: "Cambio de domicilio o de trabajo" }],
     ["Arturo", "Beltrán Ochoa", null, "5588990011", -70, trimestral, { dias: 60, motivo: "Motivos económicos" }],
   ];
 
@@ -62,13 +64,14 @@ function crearDatosDeEjemplo(hoy: FechaISO): AlmacenMemoria {
   const suscripciones: Suscripcion[] = [];
   const pagos: Pago[] = [];
 
-  for (const [nombre, apellidos, email, telefono, diasParaVencer, plan, baja] of personas) {
+  for (const [nombre, apellidos, fechaNacimiento, telefono, diasParaVencer, plan, baja] of personas) {
     const socio: Socio = {
       id: nuevoId(),
       nombre,
       apellidos,
-      email,
       telefono,
+      fechaNacimiento,
+      foto: null,
       notas: null,
       activo: !baja,
       fechaBaja: baja ? sumarDias(hoy, -baja.dias) : null,
@@ -107,7 +110,7 @@ function crearDatosDeEjemplo(hoy: FechaISO): AlmacenMemoria {
   }
 
   const { productos, movimientos, ventas } = inventarioDeEjemplo(hoy);
-  return { socios, planes, suscripciones, pagos, avisos: new Set(), productos, movimientos, ventas };
+  return { socios, planes, suscripciones, pagos, avisos: new Set(), fotos: new Map(), productos, movimientos, ventas };
 }
 
 function inventarioDeEjemplo(hoy: FechaISO) {

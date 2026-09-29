@@ -13,12 +13,12 @@ export async function GET() {
 
   const { socios } = await (await casosDeUso()).listarSocios.ejecutar({ filtro: "todos" });
   const csv = generarCsv(
-    ["Nombre", "Apellidos", "Celular", "Correo", "Estado", "Plan", "Vence", "Días restantes", "Alta", "Fecha de baja", "Motivo de baja", "Notas"],
+    ["Nombre", "Apellidos", "Celular", "Fecha de nacimiento", "Estado", "Plan", "Vence", "Días restantes", "Alta", "Fecha de baja", "Motivo de baja", "Notas"],
     socios.map(({ socio: s, membresia: m, planNombre }) => [
       s.nombre,
       s.apellidos,
       s.telefono,
-      s.email,
+      s.fechaNacimiento,
       s.activo ? ESTADOS[m.estado] : "Baja",
       planNombre,
       m.fechaFin,

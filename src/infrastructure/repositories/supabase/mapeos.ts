@@ -20,8 +20,9 @@ export const aSocio = (f: FilaSocio): Socio => ({
   id: f.id,
   nombre: f.nombre,
   apellidos: f.apellidos,
-  email: f.email,
   telefono: f.telefono,
+  fechaNacimiento: f.fecha_nacimiento,
+  foto: f.foto,
   notas: f.notas,
   activo: f.activo,
   fechaBaja: f.fecha_baja,
@@ -108,7 +109,7 @@ export const aVenta = (f: FilaVenta): Venta => ({
 export function verificar<T>(resultado: { data: T | null; error: { message: string; code?: string } | null }): T {
   const { error } = resultado;
   if (error) {
-    if (error.code === "23505") throw new ErrorDeDominio("Ya existe un registro con esos datos (por ejemplo, el mismo correo o código).");
+    if (error.code === "23505") throw new ErrorDeDominio("Ya existe un registro con esos datos (por ejemplo, el mismo código de producto).");
     if (error.code?.startsWith("GY")) throw new ErrorDeDominio(error.message);
     throw new Error(`Error de base de datos: ${error.message}`);
   }
