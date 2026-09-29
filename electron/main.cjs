@@ -124,9 +124,10 @@ async function iniciarServidor() {
     app.quit();
   });
 
-  const url = `http://127.0.0.1:${puerto}`;
-  await esperarRespuesta(url);
-  return url;
+  await esperarRespuesta(`http://127.0.0.1:${puerto}`);
+  // La ventana usa "localhost" porque así arma Next.js sus redirecciones; si se
+  // mezclara con 127.0.0.1, la sesión (cookies) quedaría en dos sitios distintos.
+  return `http://localhost:${puerto}`;
 }
 
 function puertoLibre() {
