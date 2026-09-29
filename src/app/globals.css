@@ -1,0 +1,183 @@
+@import "tailwindcss";
+
+/*
+ * Olimpo GYM: identidad rojo y negro.
+ *
+ * El rojo es un color intenso, así que se usa poco y con intención:
+ * la acción principal de cada pantalla, la sección activa del menú y lo
+ * que requiere atención inmediata. El resto de la interfaz vive en negro
+ * y neutros cálidos, que cansan menos la vista en un turno largo.
+ */
+@theme {
+  --color-fondo: #f4f4f2;
+  --color-superficie: #ffffff;
+  --color-hundido: #f0f0ed;
+  --color-tinta: #17171b;
+  --color-tinta-suave: #3b3b42;
+  --color-gris: #6a6a72;
+  --color-linea: #e3e3df;
+  --color-linea-fuerte: #cdcdc8;
+  --color-carbon: #0f0f11;
+  --color-carbon-claro: #1c1c20;
+  --color-rojo: #c1121f;
+  --color-rojo-oscuro: #9c0e19;
+  --color-rojo-tenue: #fbeced;
+  --color-verde: #1c7045;
+  --color-verde-tenue: #e7f2eb;
+  --color-ambar: #955800;
+  --color-ambar-tenue: #fbf0de;
+
+  --font-display: "Barlow Condensed", "Arial Narrow", system-ui, sans-serif;
+  --font-sans: "Barlow", system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+@layer base {
+  html {
+    background: var(--color-fondo);
+    color: var(--color-tinta);
+    font-family: var(--font-sans);
+    font-size: 15.5px;
+    -webkit-font-smoothing: antialiased;
+  }
+  body {
+    background: var(--color-fondo);
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-tinta);
+    outline-offset: 2px;
+  }
+  input, select, textarea, button {
+    font: inherit;
+  }
+  button:not(:disabled), summary {
+    cursor: pointer;
+  }
+  ::selection {
+    background: var(--color-rojo);
+    color: white;
+  }
+}
+
+@layer components {
+  /* ── Tipografía ─────────────────────────────────────────────── */
+  .titulo {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: clamp(1.9rem, 3.2vw, 2.4rem);
+    line-height: 1;
+    text-transform: uppercase;
+    letter-spacing: 0.01em;
+  }
+  .subtitulo {
+    font-weight: 600;
+    font-size: 1.05rem;
+    line-height: 1.3;
+  }
+  /* Rótulo pequeño en mayúsculas: encabezados de tabla, etiquetas de cifras. */
+  .rotulo {
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-gris);
+  }
+  .cifra {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+  }
+  .enlace {
+    font-weight: 600;
+    text-underline-offset: 3px;
+  }
+  .enlace:hover {
+    text-decoration: underline;
+  }
+
+  /* ── Formularios ────────────────────────────────────────────── */
+  .campo {
+    display: block;
+    width: 100%;
+    border: 1px solid var(--color-linea-fuerte);
+    background: var(--color-superficie);
+    border-radius: 5px;
+    padding: 0.55rem 0.7rem;
+    transition: border-color 120ms, box-shadow 120ms;
+  }
+  .campo:hover { border-color: var(--color-gris); }
+  .campo:focus {
+    outline: none;
+    border-color: var(--color-tinta);
+    box-shadow: 0 0 0 3px rgb(23 23 27 / 0.12);
+  }
+  .etiqueta {
+    display: block;
+    font-weight: 600;
+    font-size: 0.9rem;
+    margin-bottom: 0.35rem;
+  }
+  .ayuda { font-size: 0.83rem; color: var(--color-gris); margin-top: 0.3rem; }
+
+  /* ── Botones ────────────────────────────────────────────────── */
+  .boton, .boton-secundario, .boton-oscuro, .boton-peligro {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.45rem;
+    border-radius: 5px;
+    padding: 0.55rem 1rem;
+    font-weight: 600;
+    font-size: 0.95rem;
+    line-height: 1.25;
+    white-space: nowrap;
+    border: 1px solid transparent;
+    transition: background 120ms, border-color 120ms, color 120ms;
+  }
+  .boton { background: var(--color-rojo); color: white; }
+  .boton:hover { background: var(--color-rojo-oscuro); }
+  .boton-oscuro { background: var(--color-tinta); color: white; }
+  .boton-oscuro:hover { background: var(--color-tinta-suave); }
+  .boton-secundario { background: var(--color-superficie); color: var(--color-tinta); border-color: var(--color-linea-fuerte); }
+  .boton-secundario:hover { border-color: var(--color-tinta); }
+  .boton-peligro { background: var(--color-superficie); color: var(--color-rojo); border-color: rgb(193 18 31 / 0.35); }
+  .boton-peligro:hover { border-color: var(--color-rojo); background: var(--color-rojo-tenue); }
+  .boton:disabled, .boton-oscuro:disabled {
+    background: var(--color-linea-fuerte);
+    color: var(--color-gris);
+    cursor: not-allowed;
+  }
+  .boton-secundario:disabled, .boton-peligro:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+  .boton-chico { padding: 0.35rem 0.7rem; font-size: 0.875rem; }
+
+  /* ── Superficies y tablas ───────────────────────────────────── */
+  .superficie {
+    background: var(--color-superficie);
+    border: 1px solid var(--color-linea);
+    border-radius: 7px;
+  }
+  .tabla { width: 100%; border-collapse: collapse; font-size: 0.95rem; }
+  .tabla th {
+    text-align: left;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-gris);
+    padding: 0.7rem 1rem;
+    background: var(--color-hundido);
+    border-bottom: 1px solid var(--color-linea);
+    white-space: nowrap;
+  }
+  .tabla td { padding: 0.75rem 1rem; border-bottom: 1px solid var(--color-linea); vertical-align: middle; }
+  .tabla tbody tr:last-child td { border-bottom: 0; }
+  .tabla tbody tr:hover td { background: #fafaf8; }
+  .tabla .numero { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}

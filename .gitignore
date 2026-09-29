@@ -1,0 +1,14 @@
+node_modules
+.next
+out
+.env
+.env.local
+.env*.local
+.vercel
+*.tsbuildinfo
+next-env.d.ts
+dist-escritorio
+
+# Archivos del cliente y copias sueltas: no van al repositorio público
+docs/*.docx
+*.zip
