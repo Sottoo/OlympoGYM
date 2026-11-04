@@ -1,110 +1,288 @@
 import "server-only";
-import { existsSync } from "node:fs";
-import { mkdir, readdir, rename, rm, writeFile } from "node:fs/promises";
+import { existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { hoyEn } from "@/domain/shared/fechas";
-import { entorno, modoDemo } from "../config/entorno";
-import { obtenerAlmacen } from "../repositories/memoria/AlmacenMemoria";
-import { CARPETA_FOTOS } from "../repositories/supabase/SupabaseAlmacenFotos";
-import { crearClienteServidor } from "../supabase/clienteServidor";
+import { DatabaseSync } from "node:sqlite";
+import { writeFile, rename, mkdir } from "node:fs/promises";
+import { strFromU8, unzipSync, zip, zipSync } from "fflate";
+import { ErrorDeDominio } from "@/domain/shared/ErrorDeDominio";
+import { entorno } from "../config/entorno";
+import { ARCHIVO_BASE, baseDeDatos, cerrarBase, rutaBase, rutaFotos, Sesion } from "../sqlite/baseDeDatos";
+import { MIGRACIONES } from "../sqlite/esquema";
+import { contenidoDelRespaldo, depurar, escribirSeguro, nombreDeRespaldo, PATRON, type TipoRespaldo } from "./paquete";
 
-/**
- * Copia completa de la base de datos en un archivo JSON.
+/*
+ * Respaldos del gimnasio. Un respaldo es un solo archivo .zip con una copia
+ * exacta de la base de datos y todas las fotos (de socios y productos).
  *
- * El plan gratuito de Supabase no guarda respaldos, así que la app de
- * escritorio deja uno por día en la computadora del gimnasio. Con ese
- * archivo se puede reconstruir todo si algo le pasa al proyecto en línea.
- * Las fotos de los socios se copian aparte, a la carpeta "fotos".
+ * · Cada día, al abrir el programa, se guarda uno automáticamente, y se
+ *   vuelve a guardar (encima del del día) cada 3 horas mientras se usa, para
+ *   que un problema en la tarde no se lleve todo lo de ese día.
+ * · Se guarda en la carpeta de respaldos y, si se configuró, también en una
+ *   carpeta extra (Google Drive, OneDrive o una USB), para tener una copia
+ *   fuera de la computadora.
+ * · Se conservan los últimos 30 diarios de cada carpeta y, aparte, los
+ *   últimos 20 manuales o previos a restaurar o actualizar (unos no
+ *   desplazan a otros).
+ * · Cuando una versión nueva del programa cambia la estructura de la base,
+ *   antes se guarda un respaldo completo (ver paquete.ts).
+ * · El respaldo no lleva la llave de las sesiones: con un respaldo no se
+ *   puede abrir el programa sin contraseña.
  */
 
-const TABLAS = [
-  "personal",
-  "planes",
-  "socios",
-  "suscripciones",
-  "pagos",
-  "avisos_enviados",
-  "productos",
-  "ventas",
-  "movimientos_inventario",
-] as const;
+export type { TipoRespaldo } from "./paquete";
 
-/** Supabase regresa como máximo 1000 filas por consulta. */
-const FILAS_POR_PAGINA = 1000;
+/** Cada cuánto se refresca el respaldo del día mientras el programa está en uso. */
+const REFRESCAR_CADA_MS = 3 * 3_600_000;
+const FOTO_EN_RESPALDO = /^fotos\/[0-9a-f-]{36}\/\d+\.(webp|jpg|png)$/;
+/** Un respaldo real pesa unos cuantos MB; esto evita que un archivo malicioso llene la memoria. */
+const MAXIMO_DESCOMPRIMIDO = 2 * 1024 ** 3;
+const sistema = new Sesion("Sistema");
 
-/** Cuántos respaldos diarios se conservan antes de borrar los más viejos. */
-const RESPALDOS_A_CONSERVAR = 60;
-
-export interface Respaldo {
-  generadoEn: string;
-  origen: "supabase" | "demo";
-  tablas: Record<string, unknown[]>;
+export interface ArchivoRespaldo {
+  nombre: string;
+  tamano: number;
+  creadoEn: string;
+  tipo: TipoRespaldo;
 }
 
-export async function generarRespaldo(): Promise<Respaldo> {
-  const generadoEn = new Date().toISOString();
-  if (modoDemo) {
-    const { avisos, fotos: _fotos, ...resto } = obtenerAlmacen();
-    return { generadoEn, origen: "demo", tablas: { ...resto, avisos: [...avisos] } };
-  }
+export interface ResultadoRespaldo {
+  archivo: ArchivoRespaldo;
+  ruta: string;
+  /** Resultado de la copia en la carpeta extra (null si no hay carpeta extra). */
+  copiaExtra: { ok: true; ruta: string } | { ok: false; error: string } | null;
+}
 
-  const db = await crearClienteServidor();
-  const tablas: Record<string, unknown[]> = {};
-  for (const tabla of TABLAS) {
-    const filas: unknown[] = [];
-    for (let desde = 0; ; desde += FILAS_POR_PAGINA) {
-      const { data, error } = await db.from(tabla).select("*").range(desde, desde + FILAS_POR_PAGINA - 1);
-      if (error) throw new Error(`No se pudo respaldar la tabla ${tabla}: ${error.message}`);
-      filas.push(...data);
-      if (data.length < FILAS_POR_PAGINA) break;
+/* ── Ajustes de respaldo ─────────────────────────────────────────────── */
+const ajuste = (clave: string) => sistema.una<{ valor: string }>("select valor from ajustes where clave = ?", clave)?.valor ?? null;
+function guardarAjuste(clave: string, valor: string | null) {
+  sistema.escribir(() =>
+    valor === null
+      ? sistema.ejecutar("delete from ajustes where clave = ?", clave)
+      : sistema.ejecutar("insert into ajustes (clave, valor) values (?, ?) on conflict (clave) do update set valor = excluded.valor", clave, valor),
+  );
+}
+
+export const carpetaDeRespaldos = () => entorno.rutaRespaldos;
+export const carpetaExtra = () => ajuste("carpeta_respaldo_extra");
+
+/** Define (o quita, con null) la carpeta extra. Comprueba que exista y se pueda escribir en ella. */
+export function cambiarCarpetaExtra(ruta: string | null) {
+  if (ruta === null) return guardarAjuste("carpeta_respaldo_extra", null);
+  const carpeta = path.resolve(ruta.trim());
+  if (!existsSync(carpeta) || !statSync(carpeta).isDirectory()) throw new ErrorDeDominio("Esa carpeta no existe. Elígela de nuevo.");
+  const prueba = path.join(carpeta, ".prueba-olimpo");
+  try {
+    writeFileSync(prueba, "ok");
+    rmSync(prueba);
+  } catch {
+    throw new ErrorDeDominio("El programa no puede escribir en esa carpeta. Elige otra.");
+  }
+  guardarAjuste("carpeta_respaldo_extra", carpeta);
+}
+
+/* ── Crear ───────────────────────────────────────────────────────────── */
+/** El respaldo completo como .zip en memoria. */
+export function generarRespaldo(): Uint8Array {
+  return zipSync(contenidoDelRespaldo(baseDeDatos()), { level: 6 });
+}
+
+export function guardarRespaldo(tipo: TipoRespaldo): ResultadoRespaldo {
+  const datos = generarRespaldo();
+  const nombre = nombreDeRespaldo(tipo);
+  const ruta = path.join(carpetaDeRespaldos(), nombre);
+  escribirSeguro(ruta, datos);
+  depurar(carpetaDeRespaldos());
+
+  let copiaExtra: ResultadoRespaldo["copiaExtra"] = null;
+  const extra = carpetaExtra();
+  if (extra) {
+    try {
+      const destino = path.join(extra, nombre);
+      escribirSeguro(destino, datos);
+      depurar(extra);
+      copiaExtra = { ok: true, ruta: destino };
+    } catch (error) {
+      copiaExtra = { ok: false, error: error instanceof Error ? error.message : String(error) };
     }
-    tablas[tabla] = filas;
   }
-  return { generadoEn, origen: "supabase", tablas };
+  guardarAjuste("ultimo_respaldo", new Date().toISOString());
+  return { archivo: { nombre, tamano: datos.byteLength, creadoEn: new Date().toISOString(), tipo }, ruta, copiaExtra };
 }
 
-/**
- * Guarda el respaldo del día si todavía no existe. Solo corre en la app de
- * escritorio, que indica la carpeta en RUTA_RESPALDOS.
- * Devuelve la ruta del archivo creado, o null si no hizo falta.
- */
-export async function respaldoDiarioSiFalta(): Promise<string | null> {
-  const carpeta = entorno.rutaRespaldos;
-  if (!carpeta || modoDemo) return null;
-
-  await mkdir(carpeta, { recursive: true });
-  const archivos = (await readdir(carpeta)).filter((a) => /^respaldo-\d{4}-\d{2}-\d{2}\.json$/.test(a)).sort();
-  const nombre = `respaldo-${hoyEn(entorno.zonaHoraria)}.json`;
-  if (archivos.includes(nombre)) return null;
-
-  const destino = path.join(carpeta, nombre);
-  // Se escribe a un temporal y luego se renombra: nunca queda un respaldo a medias.
-  const temporal = `${destino}.tmp`;
-  const respaldo = await generarRespaldo();
-  await writeFile(temporal, JSON.stringify(respaldo), "utf8");
-  await rename(temporal, destino);
-  await respaldarFotos(carpeta, respaldo);
-
-  const sobrantes = [...archivos, nombre].sort().slice(0, -RESPALDOS_A_CONSERVAR);
-  await Promise.all(sobrantes.map((a) => rm(path.join(carpeta, a), { force: true })));
-  return destino;
+/** Guarda el respaldo del día si todavía no existe. */
+export function respaldoDiarioSiFalta(): ResultadoRespaldo | null {
+  const nombre = nombreDeRespaldo("diario");
+  if (existsSync(path.join(carpetaDeRespaldos(), nombre))) return null;
+  return guardarRespaldo("diario");
 }
 
-/**
- * Descarga solo las fotos que todavía no están en la computadora: la primera
- * vez copia todas y después, cada día, solo las nuevas.
+/*
+ * El respaldo del día se hace "por detrás": comprimir y copiar a Google Drive
+ * o a una USB puede tardar varios segundos, y mientras tanto el programa debe
+ * seguir respondiendo. Por eso se comprime en un hilo aparte (fflate usa
+ * worker_threads), se escribe con E/S asíncrona y nunca se espera desde una
+ * pantalla. Solo corre uno a la vez.
  */
-async function respaldarFotos(carpeta: string, respaldo: Respaldo) {
-  const rutas = (respaldo.tablas.socios as { foto: string | null }[]).flatMap((s) => (s.foto ? [s.foto] : []));
-  const faltantes = rutas.filter((ruta) => !existsSync(path.join(carpeta, "fotos", ruta)));
-  if (faltantes.length === 0) return;
+const estado = globalThis as unknown as { __respaldoDiarioEnCurso?: boolean };
 
-  const db = await crearClienteServidor();
-  for (const ruta of faltantes) {
-    const { data, error } = await db.storage.from(CARPETA_FOTOS).download(ruta);
-    if (error || !data) continue; // Se reintenta en el siguiente respaldo.
-    const destino = path.join(carpeta, "fotos", ruta);
-    await mkdir(path.dirname(destino), { recursive: true });
-    await writeFile(destino, Buffer.from(await data.arrayBuffer()));
+/** El del día ya existe y es reciente (de las últimas 3 horas). */
+function respaldoDelDiaAlCorriente(nombre: string): boolean {
+  const ruta = path.join(carpetaDeRespaldos(), nombre);
+  return existsSync(ruta) && Date.now() - statSync(ruta).mtimeMs < REFRESCAR_CADA_MS;
+}
+
+export function programarRespaldoDiario(): void {
+  if (estado.__respaldoDiarioEnCurso) return;
+  const nombre = nombreDeRespaldo("diario");
+  if (respaldoDelDiaAlCorriente(nombre)) return;
+  estado.__respaldoDiarioEnCurso = true;
+  // Se espera un momento para no competir con la carga de la primera pantalla.
+  setTimeout(() => {
+    respaldoDiarioAsincrono(nombre)
+      .catch((error) => console.error("No se pudo guardar el respaldo diario:", error))
+      .finally(() => (estado.__respaldoDiarioEnCurso = false));
+  }, 4000);
+}
+
+async function respaldoDiarioAsincrono(nombre: string) {
+  if (respaldoDelDiaAlCorriente(nombre)) return;
+  const datos = await new Promise<Uint8Array>((resolver, fallar) =>
+    zip(contenidoDelRespaldo(baseDeDatos()), { level: 6 }, (error, zipeado) => (error ? fallar(error) : resolver(zipeado))),
+  );
+  await escribirSeguroAsincrono(path.join(carpetaDeRespaldos(), nombre), datos);
+  depurar(carpetaDeRespaldos());
+  const extra = carpetaExtra();
+  if (extra) {
+    try {
+      await escribirSeguroAsincrono(path.join(extra, nombre), datos);
+      depurar(extra);
+    } catch (error) {
+      console.error("No se pudo copiar el respaldo a la carpeta extra:", error);
+    }
   }
+  guardarAjuste("ultimo_respaldo", new Date().toISOString());
+}
+
+async function escribirSeguroAsincrono(destino: string, datos: Uint8Array) {
+  await mkdir(path.dirname(destino), { recursive: true });
+  await writeFile(`${destino}.tmp`, datos);
+  await rename(`${destino}.tmp`, destino);
+}
+
+/* ── Consultar ───────────────────────────────────────────────────────── */
+export function listarRespaldos(): ArchivoRespaldo[] {
+  if (!existsSync(carpetaDeRespaldos())) return [];
+  return readdirSync(carpetaDeRespaldos())
+    .filter((a) => PATRON.test(a))
+    .map((nombre) => {
+      const info = statSync(path.join(carpetaDeRespaldos(), nombre));
+      const tipo: TipoRespaldo = nombre.includes("-manual")
+        ? "manual"
+        : nombre.includes("-antes-de-restaurar")
+          ? "antes-de-restaurar"
+          : nombre.includes("-antes-de-actualizar")
+            ? "antes-de-actualizar"
+            : "diario";
+      return { nombre, tamano: info.size, creadoEn: info.mtime.toISOString(), tipo };
+    })
+    .sort((a, b) => b.creadoEn.localeCompare(a.creadoEn));
+}
+
+/** Ruta de un respaldo por su nombre, solo si es un respaldo real de la carpeta. */
+export function rutaDeRespaldo(nombre: string): string | null {
+  if (!PATRON.test(nombre)) return null;
+  const ruta = path.join(carpetaDeRespaldos(), nombre);
+  return existsSync(ruta) ? ruta : null;
+}
+
+export const ultimoRespaldo = () => ajuste("ultimo_respaldo");
+
+/* ── Restaurar ───────────────────────────────────────────────────────── */
+/**
+ * Reemplaza toda la información del programa con la de un respaldo.
+ * Antes de hacerlo comprueba que el respaldo esté sano y guarda una copia de
+ * la información actual, por si hubiera que regresar.
+ */
+export function restaurarRespaldo(zip: Uint8Array): { copiaPrevia: string } {
+  let archivos: Record<string, Uint8Array>;
+  let total = 0;
+  try {
+    // Solo se extrae lo que puede venir en un respaldo real: la base, su ficha y las fotos.
+    archivos = unzipSync(zip, {
+      filter: (f) => {
+        total += f.originalSize;
+        if (total > MAXIMO_DESCOMPRIMIDO) throw new Error("demasiado grande");
+        return f.name === ARCHIVO_BASE || f.name === "info.json" || FOTO_EN_RESPALDO.test(f.name);
+      },
+    });
+  } catch {
+    throw new ErrorDeDominio("Ese archivo no es un respaldo de Olimpo (debe ser un .zip creado por el programa).");
+  }
+  const base = archivos[ARCHIVO_BASE];
+  const info = archivos["info.json"];
+  if (!base || !info || !strFromU8(info).includes("Olimpo GYM")) {
+    throw new ErrorDeDominio("Ese archivo no es un respaldo de Olimpo (debe ser un .zip creado por el programa).");
+  }
+
+  // Se revisa la base del respaldo antes de tocar nada.
+  const temporal = path.join(entorno.rutaDatos, `restaurar-${Date.now()}.db`);
+  writeFileSync(temporal, base);
+  try {
+    const prueba = new DatabaseSync(temporal);
+    const integridad = (prueba.prepare("pragma integrity_check").get() as { integrity_check: string }).integrity_check;
+    const tablas = new Set(
+      (prueba.prepare("select name from sqlite_master where type = 'table'").all() as { name: string }[]).map((t) => t.name),
+    );
+    const esperadas = ["socios", "planes", "suscripciones", "pagos", "personal", "ajustes", "bitacora"];
+    if (integridad !== "ok" || !esperadas.every((t) => tablas.has(t))) {
+      prueba.close();
+      throw new ErrorDeDominio("El respaldo está dañado y no se puede restaurar.");
+    }
+    const version = Number((prueba.prepare("pragma user_version").get() as { user_version: number }).user_version);
+    const admins = (prueba.prepare("select count(*) as n from personal where rol = 'administrador' and activo = 1").get() as { n: number }).n;
+    if (version > MIGRACIONES.length) {
+      prueba.close();
+      throw new ErrorDeDominio("Ese respaldo es de una versión más nueva del programa. Actualiza el programa antes de restaurarlo.");
+    }
+    if (admins === 0) {
+      prueba.close();
+      throw new ErrorDeDominio("Ese respaldo no tiene ninguna cuenta de administración activa; no se puede restaurar.");
+    }
+    // Una llave de sesión que viniera en un respaldo viejo no se usa: se genera una nueva.
+    prueba.exec("delete from ajustes where clave = 'llave_sesion'");
+    prueba.close();
+  } catch (error) {
+    rmSync(temporal, { force: true });
+    throw error instanceof ErrorDeDominio ? error : new ErrorDeDominio("El respaldo está dañado y no se puede restaurar.");
+  }
+
+  // Las fotos se preparan aparte; si algo falla aquí, no se ha tocado nada todavía.
+  const fotosNuevas = path.join(entorno.rutaDatos, `fotos-restaurando-${Date.now()}`);
+  try {
+    for (const [nombre, contenido] of Object.entries(archivos)) {
+      if (!FOTO_EN_RESPALDO.test(nombre)) continue;
+      const destino = path.join(fotosNuevas, ...nombre.slice("fotos/".length).split("/"));
+      mkdirSync(path.dirname(destino), { recursive: true });
+      writeFileSync(destino, contenido);
+    }
+    mkdirSync(fotosNuevas, { recursive: true });
+  } catch {
+    rmSync(temporal, { force: true });
+    rmSync(fotosNuevas, { recursive: true, force: true });
+    throw new ErrorDeDominio("No se pudieron preparar las fotos del respaldo. No se cambió nada.");
+  }
+
+  const copiaPrevia = guardarRespaldo("antes-de-restaurar").archivo.nombre;
+
+  cerrarBase();
+  for (const sufijo of ["", "-wal", "-shm"]) rmSync(`${rutaBase()}${sufijo}`, { force: true });
+  renameSync(temporal, rutaBase());
+
+  const fotosViejas = `${rutaFotos()}-anteriores-${Date.now()}`;
+  if (existsSync(rutaFotos())) renameSync(rutaFotos(), fotosViejas);
+  renameSync(fotosNuevas, rutaFotos());
+  rmSync(fotosViejas, { recursive: true, force: true });
+
+  baseDeDatos(); // Se vuelve a abrir (y se actualiza si el respaldo es de una versión anterior).
+  return { copiaPrevia };
 }

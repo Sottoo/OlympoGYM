@@ -1,22 +1,66 @@
 import "server-only";
+import { cache } from "react";
 /**
  * Contenedor de dependencias (composition root).
  *
  * Es el ÚNICO lugar donde se decide qué implementación concreta usa cada
- * caso de uso: Supabase o memoria (modo demo). Si mañana cambias de base de
- * datos, solo tocas este archivo y la carpeta de infraestructura; el dominio
- * y los casos de uso quedan igual.
+ * caso de uso. Todo vive en una base local (SQLite) dentro de la computadora;
+ * si mañana cambias de base de datos, solo tocas este archivo y la carpeta de
+ * infraestructura: el dominio y los casos de uso quedan igual.
  */
-import { MarcarAvisoEnviado, ObtenerAvisosPendientes } from "@/application/use-cases/avisos/AvisosWhatsApp";
+import { ListarEntradas, ObtenerEntradasDeHoy } from "@/application/use-cases/asistencias/ListarEntradas";
+import { ObtenerRachas, ObtenerSellosDeSocio } from "@/application/use-cases/asistencias/Sellos";
+import { ObtenerHabituales } from "@/application/use-cases/asistencias/Habituales";
+import {
+  BuscarSocioEnMostrador,
+  CobrarVisita,
+  ConsultarFichaDeEntrada,
+  DeshacerEntrada,
+  RegistrarEntrada,
+} from "@/application/use-cases/asistencias/Mostrador";
+import { ConsultarBitacora } from "@/application/use-cases/bitacora/ConsultarBitacora";
 import { ObtenerResumen } from "@/application/use-cases/dashboard/ObtenerResumen";
+import { ObtenerMetricas } from "@/application/use-cases/metricas/ObtenerMetricas";
 import {
   CambiarEstadoProducto,
+  CambiarFotoProducto,
   CrearProducto,
   EditarProducto,
+  EliminarProducto,
   ListarProductos,
   ObtenerDetalleProducto,
+  QuitarFotoProducto,
+  RevisarProducto,
 } from "@/application/use-cases/inventario/GestionarProductos";
+import {
+  AltaRapidaDeEquipos,
+  CambiarEstadoEquipo,
+  CerrarReporte,
+  EliminarAbono,
+  EliminarEquipo,
+  EliminarMantenimiento,
+  GuardarEquipo,
+  ListarHistorialDeMantenimiento,
+  ListarProveedores,
+  ObtenerFichaDeEquipo,
+  ObtenerMantenimiento,
+  ObtenerPorPagar,
+  ObtenerResumenDeGastos,
+  ObtenerSalidasDelDia,
+  ObtenerTableroDeMantenimiento,
+  RegistrarAbono,
+  RegistrarMantenimiento,
+  ReportarFalla,
+} from "@/application/use-cases/mantenimiento/Mantenimiento";
+import type { MantenimientoRepository } from "@/domain/repositories/MantenimientoRepository";
 import { RegistrarMovimiento } from "@/application/use-cases/inventario/RegistrarMovimiento";
+import {
+  AltaDesdeCatalogo,
+  ContarInventario,
+  ObtenerListaDeCompra,
+  ObtenerPopularidad,
+  RecibirMercancia,
+} from "@/application/use-cases/inventario/Abasto";
 import { CambiarEstadoPlan, CrearPlan, ListarPlanes } from "@/application/use-cases/planes/GestionarPlanes";
 import {
   CambiarFotoSocio,
@@ -28,8 +72,11 @@ import {
 import { ListarSocios } from "@/application/use-cases/socios/ListarSocios";
 import { ObtenerDetalleSocio } from "@/application/use-cases/socios/ObtenerDetalleSocio";
 import { RegistrarSocio } from "@/application/use-cases/socios/RegistrarSocio";
+import { RevisarCelular } from "@/application/use-cases/socios/celular";
 import { AsignarPlan } from "@/application/use-cases/suscripciones/AsignarPlan";
 import { ObtenerCorteDelDia, RegistrarVenta } from "@/application/use-cases/ventas/Ventas";
+import type { AsistenciaRepository } from "@/domain/repositories/AsistenciaRepository";
+import type { BitacoraRepository } from "@/domain/repositories/BitacoraRepository";
 import type { InventarioRepository } from "@/domain/repositories/InventarioRepository";
 import type { PagoRepository } from "@/domain/repositories/PagoRepository";
 import type { PlanRepository } from "@/domain/repositories/PlanRepository";
@@ -38,28 +85,26 @@ import type { SocioRepository } from "@/domain/repositories/SocioRepository";
 import type { SuscripcionRepository } from "@/domain/repositories/SuscripcionRepository";
 import type { VentaRepository } from "@/domain/repositories/VentaRepository";
 import type { AlmacenFotos } from "@/domain/services/AlmacenFotos";
-import { entorno, modoDemo } from "./config/entorno";
-import { RelojSistema } from "./RelojSistema";
-import { obtenerAlmacen } from "./repositories/memoria/AlmacenMemoria";
+import { redirect } from "next/navigation";
+import { obtenerAcceso } from "./auth/autenticacion";
+import { SinPermiso } from "@/domain/shared/ErrorDeDominio";
+import { PERMISOS, type Permiso, puede } from "@/domain/shared/permisos";
+import { entorno } from "./config/entorno";
+import { AlmacenFotosLocal } from "./sqlite/AlmacenFotosLocal";
+import { Sesion } from "./sqlite/baseDeDatos";
 import {
-  MemoriaAlmacenFotos,
-  MemoriaInventarioRepository,
-  MemoriaPagoRepository,
-  MemoriaPlanRepository,
-  MemoriaProductoRepository,
-  MemoriaSocioRepository,
-  MemoriaSuscripcionRepository,
-  MemoriaVentaRepository,
-} from "./repositories/memoria/MemoriaRepositorios";
-import { SupabaseAlmacenFotos } from "./repositories/supabase/SupabaseAlmacenFotos";
-import { SupabaseInventarioRepository } from "./repositories/supabase/SupabaseInventarioRepository";
-import { SupabasePagoRepository } from "./repositories/supabase/SupabasePagoRepository";
-import { SupabasePlanRepository } from "./repositories/supabase/SupabasePlanRepository";
-import { SupabaseProductoRepository } from "./repositories/supabase/SupabaseProductoRepository";
-import { SupabaseSocioRepository } from "./repositories/supabase/SupabaseSocioRepository";
-import { SupabaseSuscripcionRepository } from "./repositories/supabase/SupabaseSuscripcionRepository";
-import { SupabaseVentaRepository } from "./repositories/supabase/SupabaseVentaRepository";
-import { crearClienteServidor } from "./supabase/clienteServidor";
+  SqliteAsistenciaRepository,
+  SqliteBitacoraRepository,
+  SqliteInventarioRepository,
+  SqlitePagoRepository,
+  SqlitePlanRepository,
+  SqliteProductoRepository,
+  SqliteSocioRepository,
+  SqliteSuscripcionRepository,
+  SqliteVentaRepository,
+} from "./sqlite/repositorios";
+import { SqliteMantenimientoRepository } from "./sqlite/mantenimiento";
+import { RelojSistema } from "./RelojSistema";
 
 interface Repositorios {
   socios: SocioRepository;
@@ -70,70 +115,130 @@ interface Repositorios {
   inventario: InventarioRepository;
   ventas: VentaRepository;
   fotos: AlmacenFotos;
+  asistencias: AsistenciaRepository;
+  bitacora: BitacoraRepository;
+  mantenimiento: MantenimientoRepository;
 }
 
-type ClienteSupabase = ConstructorParameters<typeof SupabaseSocioRepository>[0];
-
-function repositoriosSupabase(db: ClienteSupabase): Repositorios {
+/** Repositorios sobre la base local, con el nombre de quien escribe (para la bitácora). */
+function repositoriosLocales(usuario: string): Repositorios {
+  const s = new Sesion(usuario);
   return {
-    socios: new SupabaseSocioRepository(db),
-    planes: new SupabasePlanRepository(db),
-    suscripciones: new SupabaseSuscripcionRepository(db),
-    pagos: new SupabasePagoRepository(db),
-    productos: new SupabaseProductoRepository(db),
-    inventario: new SupabaseInventarioRepository(db),
-    ventas: new SupabaseVentaRepository(db),
-    fotos: new SupabaseAlmacenFotos(db),
-  };
-}
-
-function repositoriosMemoria(): Repositorios {
-  const db = obtenerAlmacen();
-  return {
-    socios: new MemoriaSocioRepository(db),
-    planes: new MemoriaPlanRepository(db),
-    suscripciones: new MemoriaSuscripcionRepository(db),
-    pagos: new MemoriaPagoRepository(db),
-    productos: new MemoriaProductoRepository(db),
-    inventario: new MemoriaInventarioRepository(db),
-    ventas: new MemoriaVentaRepository(db),
-    fotos: new MemoriaAlmacenFotos(db),
+    socios: new SqliteSocioRepository(s),
+    planes: new SqlitePlanRepository(s),
+    suscripciones: new SqliteSuscripcionRepository(s),
+    pagos: new SqlitePagoRepository(s),
+    productos: new SqliteProductoRepository(s),
+    inventario: new SqliteInventarioRepository(s),
+    ventas: new SqliteVentaRepository(s),
+    fotos: new AlmacenFotosLocal(),
+    asistencias: new SqliteAsistenciaRepository(s),
+    bitacora: new SqliteBitacoraRepository(s),
+    mantenimiento: new SqliteMantenimientoRepository(s),
   };
 }
 
 const reloj = new RelojSistema(entorno.zonaHoraria);
 
-/** Casos de uso para las pantallas del panel (con la sesión del usuario). */
-export async function casosDeUso() {
-  const r = modoDemo ? repositoriosMemoria() : repositoriosSupabase(await crearClienteServidor());
+/**
+ * Casos de uso para las pantallas del panel (con la sesión del usuario).
+ * `cache` hace que el layout y la página de una misma petición compartan
+ * los mismos repositorios, así no se piden dos veces los mismos datos.
+ */
+export const casosDeUso = cache(async () => {
+  // Sin sesión no hay acceso a los datos: se regresa a la pantalla de entrada.
+  const acceso = await obtenerAcceso();
+  if (acceso.tipo !== "autorizado") redirect("/login");
+  const { rol } = acceso.personal;
+  const r = repositoriosLocales(acceso.personal.nombre);
+
+  /**
+   * Un caso de uso que solo puede usar cierto perfil. Para los demás se
+   * entrega uno que siempre rechaza con un mensaje claro: así ninguna acción
+   * ni consulta se salta los permisos, venga de donde venga.
+   */
+  function soloCon<T extends { ejecutar: (...args: never[]) => Promise<unknown> }>(permiso: Permiso, caso: T): T {
+    if (puede(rol, permiso)) return caso;
+    return {
+      ejecutar: async () => {
+        throw new SinPermiso(PERMISOS[permiso]);
+      },
+    } as unknown as T;
+  }
+
+  const listarEntradas = new ListarEntradas(r.asistencias, r.socios, reloj);
+  const consultarFichaDeEntrada = new ConsultarFichaDeEntrada(r.socios, r.suscripciones, r.asistencias, r.fotos, r.planes, reloj);
+  const asignarPlan = new AsignarPlan(r.socios, r.planes, r.suscripciones, reloj, puede(rol, "cobros.otroMonto"));
+  const registrarEntrada = new RegistrarEntrada(consultarFichaDeEntrada, r.asistencias, reloj);
+  const cobrarVisita = new CobrarVisita(consultarFichaDeEntrada, asignarPlan, registrarEntrada, r.suscripciones);
 
   return {
     obtenerResumen: new ObtenerResumen(r.socios, r.suscripciones, r.pagos, r.productos, r.ventas, reloj),
     // Socios
     listarSocios: new ListarSocios(r.socios, r.suscripciones, reloj),
     obtenerDetalleSocio: new ObtenerDetalleSocio(r.socios, r.suscripciones, r.pagos, r.fotos, reloj),
-    registrarSocio: new RegistrarSocio(r.socios, reloj),
+    registrarSocio: new RegistrarSocio(r.socios, r.planes, asignarPlan, cobrarVisita, reloj, puede(rol, "cobros.otroMonto")),
+    revisarCelular: new RevisarCelular(r.socios),
     editarSocio: new EditarSocio(r.socios, reloj),
     cambiarFotoSocio: new CambiarFotoSocio(r.socios, r.fotos),
     quitarFotoSocio: new QuitarFotoSocio(r.socios, r.fotos),
-    darDeBajaSocio: new DarDeBajaSocio(r.socios, reloj),
-    reactivarSocio: new ReactivarSocio(r.socios),
+    darDeBajaSocio: soloCon("socios.baja", new DarDeBajaSocio(r.socios, reloj)),
+    reactivarSocio: soloCon("socios.baja", new ReactivarSocio(r.socios)),
     // Planes y membresías
     listarPlanes: new ListarPlanes(r.planes),
-    crearPlan: new CrearPlan(r.planes),
-    cambiarEstadoPlan: new CambiarEstadoPlan(r.planes),
-    asignarPlan: new AsignarPlan(r.socios, r.planes, r.suscripciones, r.pagos, reloj),
+    crearPlan: soloCon("planes.gestionar", new CrearPlan(r.planes)),
+    cambiarEstadoPlan: soloCon("planes.gestionar", new CambiarEstadoPlan(r.planes)),
+    asignarPlan,
     // Inventario y ventas
     listarProductos: new ListarProductos(r.productos),
     obtenerDetalleProducto: new ObtenerDetalleProducto(r.productos, r.inventario),
-    crearProducto: new CrearProducto(r.productos, r.inventario, reloj),
-    editarProducto: new EditarProducto(r.productos),
-    cambiarEstadoProducto: new CambiarEstadoProducto(r.productos),
-    registrarMovimiento: new RegistrarMovimiento(r.productos, r.inventario, reloj),
+    crearProducto: soloCon("inventario.gestionar", new CrearProducto(r.productos, reloj)),
+    editarProducto: soloCon("inventario.gestionar", new EditarProducto(r.productos)),
+    cambiarEstadoProducto: soloCon("inventario.gestionar", new CambiarEstadoProducto(r.productos)),
+    eliminarProducto: soloCon("inventario.gestionar", new EliminarProducto(r.productos, r.fotos)),
+    cambiarFotoProducto: soloCon("inventario.gestionar", new CambiarFotoProducto(r.productos, r.fotos)),
+    quitarFotoProducto: soloCon("inventario.gestionar", new QuitarFotoProducto(r.productos, r.fotos)),
+    revisarProducto: soloCon("inventario.gestionar", new RevisarProducto(r.productos)),
+    registrarMovimiento: soloCon("inventario.gestionar", new RegistrarMovimiento(r.productos, r.inventario, reloj)),
+    recibirMercancia: soloCon("inventario.gestionar", new RecibirMercancia(r.productos, r.inventario, reloj)),
+    contarInventario: soloCon("inventario.gestionar", new ContarInventario(r.productos, r.inventario, reloj)),
+    altaDesdeCatalogo: soloCon("inventario.gestionar", new AltaDesdeCatalogo(r.productos, reloj)),
+    obtenerListaDeCompra: soloCon("inventario.gestionar", new ObtenerListaDeCompra(r.productos, r.inventario, reloj)),
+    obtenerPopularidad: new ObtenerPopularidad(r.inventario, reloj),
     registrarVenta: new RegistrarVenta(r.productos, r.ventas, reloj),
-    obtenerCorteDelDia: new ObtenerCorteDelDia(r.ventas, reloj),
-    // Avisos por WhatsApp
-    obtenerAvisosPendientes: new ObtenerAvisosPendientes(r.socios, r.suscripciones, reloj),
-    marcarAvisoEnviado: new MarcarAvisoEnviado(r.suscripciones),
+    obtenerCorteDelDia: new ObtenerCorteDelDia(r.ventas, r.pagos, reloj),
+    // Mostrador y asistencias
+    buscarSocioEnMostrador: new BuscarSocioEnMostrador(r.socios, r.suscripciones, reloj),
+    consultarFichaDeEntrada,
+    registrarEntrada,
+    cobrarVisita,
+    deshacerEntrada: new DeshacerEntrada(r.asistencias, r.suscripciones, r.planes, reloj),
+    listarEntradas,
+    obtenerEntradasDeHoy: new ObtenerEntradasDeHoy(listarEntradas, reloj),
+    obtenerSellosDeSocio: new ObtenerSellosDeSocio(r.asistencias, reloj),
+    obtenerRachas: new ObtenerRachas(r.asistencias, r.socios, reloj),
+    obtenerHabituales: new ObtenerHabituales(r.asistencias, r.socios, reloj),
+    // Mantenimiento: el estado de las máquinas y reportar fallas es para todos; costos y pagos, para la administración.
+    obtenerTableroDeMantenimiento: new ObtenerTableroDeMantenimiento(r.mantenimiento, reloj),
+    obtenerFichaDeEquipo: new ObtenerFichaDeEquipo(r.mantenimiento, reloj),
+    reportarFalla: new ReportarFalla(r.mantenimiento),
+    obtenerSalidasDelDia: new ObtenerSalidasDelDia(r.mantenimiento, reloj),
+    obtenerResumenDeGastos: soloCon("mantenimiento.gestionar", new ObtenerResumenDeGastos(r.mantenimiento, reloj)),
+    guardarEquipo: soloCon("mantenimiento.gestionar", new GuardarEquipo(r.mantenimiento, reloj)),
+    altaRapidaDeEquipos: soloCon("mantenimiento.gestionar", new AltaRapidaDeEquipos(r.mantenimiento, reloj)),
+    cambiarEstadoEquipo: soloCon("mantenimiento.gestionar", new CambiarEstadoEquipo(r.mantenimiento)),
+    eliminarEquipo: soloCon("mantenimiento.gestionar", new EliminarEquipo(r.mantenimiento)),
+    registrarMantenimiento: soloCon("mantenimiento.gestionar", new RegistrarMantenimiento(r.mantenimiento, reloj)),
+    obtenerMantenimiento: soloCon("mantenimiento.gestionar", new ObtenerMantenimiento(r.mantenimiento)),
+    eliminarMantenimiento: soloCon("mantenimiento.gestionar", new EliminarMantenimiento(r.mantenimiento)),
+    registrarAbono: soloCon("mantenimiento.gestionar", new RegistrarAbono(r.mantenimiento, reloj)),
+    eliminarAbono: soloCon("mantenimiento.gestionar", new EliminarAbono(r.mantenimiento)),
+    listarHistorialDeMantenimiento: soloCon("mantenimiento.gestionar", new ListarHistorialDeMantenimiento(r.mantenimiento)),
+    obtenerPorPagar: soloCon("mantenimiento.gestionar", new ObtenerPorPagar(r.mantenimiento)),
+    listarProveedores: soloCon("mantenimiento.gestionar", new ListarProveedores(r.mantenimiento)),
+    cerrarReporte: soloCon("mantenimiento.gestionar", new CerrarReporte(r.mantenimiento)),
+    // Bitácora y métricas
+    consultarBitacora: soloCon("bitacora.ver", new ConsultarBitacora(r.bitacora, reloj)),
+    obtenerMetricas: soloCon("metricas.ver", new ObtenerMetricas(r.asistencias, r.socios, r.pagos, r.ventas, r.productos, r.mantenimiento, reloj)),
   };
-}
+});

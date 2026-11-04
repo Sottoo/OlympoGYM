@@ -1,4 +1,7 @@
-import { obtenerAcceso } from "@/infrastructure/auth/autenticacion";
+import { hoyEn } from "@/domain/shared/fechas";
+import { entorno } from "@/infrastructure/config/entorno";
+import { fechaLocal } from "@/shared/formato";
+import { tienePermiso } from "@/infrastructure/auth/autenticacion";
 import { casosDeUso } from "@/infrastructure/contenedor";
 import { generarCsv, respuestaCsv } from "@/presentation/csv";
 
@@ -8,8 +11,7 @@ const ESTADOS = { vigente: "Al corriente", por_vencer: "Por vencer", vencida: "V
 
 /** Descarga de todos los socios (activos y bajas) en un archivo que abre Excel. */
 export async function GET() {
-  const acceso = await obtenerAcceso();
-  if (acceso.tipo !== "autorizado") return new Response("No autorizado", { status: 401 });
+  if (!(await tienePermiso("exportar"))) return new Response("Tu perfil no permite exportar a Excel.", { status: 403 });
 
   const { socios } = await (await casosDeUso()).listarSocios.ejecutar({ filtro: "todos" });
   const csv = generarCsv(
@@ -23,11 +25,11 @@ export async function GET() {
       planNombre,
       m.fechaFin,
       m.diasRestantes,
-      s.creadoEn.slice(0, 10),
+      fechaLocal(s.creadoEn, entorno.zonaHoraria),
       s.fechaBaja,
       s.motivoBaja,
       s.notas,
     ]),
   );
-  return respuestaCsv(`socios-${new Date().toISOString().slice(0, 10)}.csv`, csv);
+  return respuestaCsv(`socios-${hoyEn(entorno.zonaHoraria)}.csv`, csv);
 }

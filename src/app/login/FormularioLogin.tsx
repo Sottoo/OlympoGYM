@@ -1,25 +1,40 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState } from "react";
 import { estadoInicial } from "@/presentation/acciones/estadoFormulario";
 import { BotonEnviar } from "@/presentation/components/BotonEnviar";
-import { MensajeError } from "@/presentation/components/Mensajes";
+import { CampoContrasena } from "@/presentation/components/formulario/campos";
+import { Ayuda, Etiqueta, Formulario } from "@/presentation/components/formulario/Formulario";
 import { accionIniciarSesion } from "./acciones";
 
 export function FormularioLogin() {
   const [estado, accion] = useActionState(accionIniciarSesion, estadoInicial);
   return (
-    <form action={accion} className="space-y-5">
-      <MensajeError mensaje={estado.error} />
+    <Formulario action={accion} estado={estado} tituloError={null} className="grid gap-5">
       <div>
-        <label htmlFor="email" className="etiqueta">Correo</label>
-        <input id="email" name="email" type="email" autoComplete="email" required className="campo" defaultValue={estado.valores?.email} />
+        <Etiqueta para="usuario">Usuario</Etiqueta>
+        <input
+          id="usuario"
+          name="usuario"
+          autoComplete="username"
+          autoCapitalize="none"
+          spellCheck={false}
+          autoFocus
+          required
+          className="campo"
+          defaultValue={estado.valores?.usuario}
+          data-falta="Escribe tu usuario."
+        />
+        <Ayuda para="usuario" />
       </div>
       <div>
-        <label htmlFor="contrasena" className="etiqueta">Contraseña</label>
-        <input id="contrasena" name="contrasena" type="password" autoComplete="current-password" required className="campo" />
+        <Etiqueta para="contrasena">Contraseña</Etiqueta>
+        <CampoContrasena id="contrasena" nombre="contrasena" atributos={{ "data-falta": "Escribe tu contraseña." }} />
+        <Ayuda para="contrasena" />
       </div>
-      <BotonEnviar textoEnviando="Entrando…" className="w-full">Entrar al panel</BotonEnviar>
-    </form>
+      <BotonEnviar textoEnviando="Entrando…" className="w-full py-3">Entrar</BotonEnviar>
+      <Link href="/login/recuperar" className="enlace w-fit text-[0.88rem] text-gris">¿Olvidaste tu contraseña?</Link>
+    </Formulario>
   );
 }

@@ -1,22 +1,24 @@
 {
   "name": "proyecto-gimnasio",
   "productName": "Olimpo GYM",
-  "version": "0.1.0",
+  "version": "1.0.0-beta.12",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "rapido": "next build && next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "build:escritorio": "next build && node scripts/preparar-escritorio.mjs",
     "escritorio": "electron .",
     "escritorio:dev": "electron . --dev",
-    "instalador": "npm run build:escritorio && electron-builder --win"
+    "abrir": "npm run build:escritorio && electron .",
+    "instalador": "npm run build:escritorio && electron-builder --win && node scripts/limpiar-instaladores.mjs",
+    "instalador:docker": "npm run build:escritorio && node scripts/instalador-docker.mjs && node scripts/limpiar-instaladores.mjs"
   },
   "dependencies": {
-    "@supabase/ssr": "^0.12.7",
-    "@supabase/supabase-js": "^2.117.0",
+    "fflate": "^0.8.3",
     "next": "15.5.26",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
@@ -49,14 +51,25 @@
     ],
     "win": {
       "target": "nsis",
-      "icon": "build/icon.png"
+      "icon": "build/icon.ico"
     },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
-      "shortcutName": "Olimpo GYM"
+      "shortcutName": "Olimpo GYM",
+      "uninstallDisplayName": "Olimpo GYM",
+      "installerLanguages": [
+        "es_ES"
+      ],
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerSidebar": "build/installerSidebar.bmp",
+      "uninstallerSidebar": "build/installerSidebar.bmp",
+      "installerHeader": "build/installerHeader.bmp",
+      "include": "build/installer.nsh"
     },
-    "afterPack": "scripts/despues-de-empaquetar.cjs"
+    "afterPack": "scripts/despues-de-empaquetar.cjs",
+    "copyright": "© 2026 Olimpo GYM"
   }
 }

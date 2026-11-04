@@ -24,7 +24,7 @@ export interface Resumen {
   vigentes: number;
   porVencer: FilaVencimiento[];
   vencidosRecientes: FilaVencimiento[];
-  ingresos: { membresiasMes: number; ventasMes: number; ventasHoy: number };
+  ingresos: { membresiasMes: number; ventasMes: number; ventasHoy: number; membresiasHoy: number };
   /** Productos activos agotados o en su stock mínimo, los más urgentes primero. */
   stockBajo: Producto[];
 }
@@ -45,13 +45,14 @@ export class ObtenerResumen {
   async ejecutar(): Promise<Resumen> {
     const hoy = this.reloj.hoy();
     const inicioMes = primerDiaDelMes(hoy);
-    const [socios, ultimas, membresiasMes, ventasMes, ventasHoy, productos] = await Promise.all([
+    const [socios, ultimas, membresiasMes, ventasMes, ventasHoy, productos, membresiasHoy] = await Promise.all([
       this.socios.listar(),
       this.suscripciones.listarUltimaDeCadaSocio(),
       this.pagos.sumarEntre(inicioMes, hoy),
       this.ventas.sumarEntre(inicioMes, hoy),
       this.ventas.sumarEntre(hoy, hoy),
       this.productos.listar({ soloActivos: true }),
+      this.pagos.sumarEntre(hoy, hoy),
     ]);
     const sociosPorId = new Map(socios.filter((s) => s.activo).map((s) => [s.id, s]));
 
@@ -93,7 +94,7 @@ export class ObtenerResumen {
       vigentes,
       porVencer,
       vencidosRecientes,
-      ingresos: { membresiasMes, ventasMes, ventasHoy },
+      ingresos: { membresiasMes, ventasMes, ventasHoy, membresiasHoy },
       stockBajo,
     };
   }

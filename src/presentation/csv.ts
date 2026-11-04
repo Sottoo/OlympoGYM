@@ -4,7 +4,10 @@
  */
 export function generarCsv(encabezados: string[], filas: (string | number | null)[][]): string {
   const celda = (v: string | number | null) => {
-    const texto = v === null ? "" : String(v);
+    let texto = v === null ? "" : String(v);
+    // Un texto que empieza con = + - @ Excel lo trataría como fórmula: se
+    // antepone un apóstrofo para que se vea como texto (nota "=SUMA(...)").
+    if (typeof v === "string" && /^[=+\-@\t\r]/.test(texto)) texto = `'${texto}`;
     return /[",\n\r]/.test(texto) ? `"${texto.replace(/"/g, '""')}"` : texto;
   };
   return "﻿" + [encabezados, ...filas].map((fila) => fila.map(celda).join(",")).join("\r\n");

@@ -1,7 +1,9 @@
+import { tienePermiso } from "@/infrastructure/auth/autenticacion";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { FILTROS_SOCIOS, type FiltroSocios } from "@/application/use-cases/socios/ListarSocios";
-import { nombreCompleto } from "@/domain/entities/Socio";
+import { nombreCompleto, numeroDeSocio } from "@/domain/entities/Socio";
+import { Avatar } from "@/presentation/components/Avatar";
 import { casosDeUso } from "@/infrastructure/contenedor";
 import { Encabezado } from "@/presentation/components/Encabezado";
 import { Icono } from "@/presentation/components/Icono";
@@ -25,7 +27,7 @@ const PESTANAS: { filtro: FiltroSocios; texto: string }[] = [
 export default async function PaginaSocios({ searchParams }: { searchParams: Promise<{ q?: string; filtro?: string }> }) {
   const { q = "", filtro: filtroUrl } = await searchParams;
   const filtro: FiltroSocios = (FILTROS_SOCIOS as readonly string[]).includes(filtroUrl ?? "") ? (filtroUrl as FiltroSocios) : "activos";
-  const { socios, conteos } = await (await casosDeUso()).listarSocios.ejecutar({ busqueda: q, filtro });
+  const [{ socios, conteos }, exporta] = await Promise.all([(await casosDeUso()).listarSocios.ejecutar({ busqueda: q, filtro }), tienePermiso("exportar")]);
   const verBajas = filtro === "bajas";
 
   const hrefFiltro = (f: FiltroSocios, conBusqueda = true) => {
@@ -37,31 +39,34 @@ export default async function PaginaSocios({ searchParams }: { searchParams: Pro
   };
 
   return (
-    <div className="space-y-6">
-      <Encabezado
+    <div className="pagina">
+      <Encabezado icono="socios"
         titulo="Socios"
         descripcion={`${conteos.activos} activos · ${conteos.bajas} dados de baja`}
         acciones={
           <>
-            <a href="/api/exportar/socios" className="boton-secundario" download>
-              <Icono nombre="descargar" className="size-4" />
-              Exportar a Excel
-            </a>
+            {exporta && (
+              <a href="/api/exportar/socios" className="boton-secundario" download>
+                <Icono nombre="descargar" className="size-4" />
+                Exportar a Excel
+              </a>
+            )}
             <Link href="/socios/nuevo" className="boton">
               <Icono nombre="mas" className="size-4" />
-              Registrar socio
+              Inscribir socio
             </Link>
           </>
         }
       />
 
-      <div className="space-y-4">
+      {/* Una sola barra: filtros a la izquierda, búsqueda a la derecha. */}
+      <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
         <Pestanas
           etiqueta="Filtrar socios"
           opciones={PESTANAS.map((p) => ({ href: hrefFiltro(p.filtro), texto: p.texto, cuenta: conteos[p.filtro], activa: p.filtro === filtro }))}
         />
 
-        <form role="search" className="flex max-w-md gap-2">
+        <form role="search" className="flex w-full gap-2 sm:w-[19rem]">
           {filtro !== "activos" && <input type="hidden" name="filtro" value={filtro} />}
           <label htmlFor="q" className="sr-only">Buscar socio</label>
           <div className="relative flex-1">
@@ -74,7 +79,7 @@ export default async function PaginaSocios({ searchParams }: { searchParams: Pro
       </div>
 
       {socios.length === 0 ? (
-        <Vacio accion={!q && filtro === "activos" && <Link href="/socios/nuevo" className="boton">Registrar el primer socio</Link>}>
+        <Vacio accion={!q && filtro === "activos" && <Link href="/socios/nuevo" className="boton">Inscribir el primer socio</Link>}>
           {q ? `Nadie coincide con “${q}” en esta lista.` : verBajas ? "No hay socios dados de baja." : "No hay socios en esta lista."}
         </Vacio>
       ) : (
@@ -91,7 +96,14 @@ export default async function PaginaSocios({ searchParams }: { searchParams: Pro
               {socios.map(({ socio, membresia, planNombre }) => (
                 <tr key={socio.id}>
                   <td>
-                    <Link href={`/socios/${socio.id}`} className="enlace">{nombreCompleto(socio)}</Link>
+                    <div className="flex items-center gap-3">
+                      {/* Las fotos locales se sirven en /api/fotos (ver AlmacenFotosLocal). */}
+                      <Avatar nombre={nombreCompleto(socio)} fotoUrl={socio.foto ? `/api/fotos/${socio.foto}` : null} />
+                      <span className="min-w-0">
+                        <Link href={`/socios/${socio.id}`} className="enlace block">{nombreCompleto(socio)}</Link>
+                        <span className="numero-socio">{numeroDeSocio(socio.numero)}</span>
+                      </span>
+                    </div>
                   </td>
                   <td className="whitespace-nowrap text-tinta-suave tabular-nums">
                     {socio.telefono ? formatearTelefono(socio.telefono) : <span className="text-gris">—</span>}

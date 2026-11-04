@@ -1,252 +1,267 @@
+import { tienePermiso } from "@/infrastructure/auth/autenticacion";
 import type { Metadata } from "next";
 import Link from "next/link";
 import type { FilaVencimiento } from "@/application/use-cases/dashboard/ObtenerResumen";
-import { estadoDeStock } from "@/domain/entities/Producto";
 import { entorno } from "@/infrastructure/config/entorno";
 import { casosDeUso } from "@/infrastructure/contenedor";
+import { carpetaExtra } from "@/infrastructure/respaldo/respaldo";
 import { BotonWhatsApp } from "@/presentation/components/BotonWhatsApp";
-import { Encabezado } from "@/presentation/components/Encabezado";
 import { Icono } from "@/presentation/components/Icono";
-import { Indicadores } from "@/presentation/components/Indicadores";
-import { EstadoStockInsignia } from "@/presentation/components/Insignia";
-import { mensajeRecordatorio } from "@/presentation/whatsapp";
-import { describirDiasRestantes, diaDeLaSemana, formatearDinero, formatearFecha, formatearFechaLarga } from "@/shared/formato";
+import { Emblema } from "@/presentation/components/pictogramas/Emblema";
+import { EnlacePanel, Panel } from "@/presentation/components/Panel";
+import { compararCon, EtiquetaCifra } from "@/presentation/components/Marcador";
+import { describirDiasRestantes, diaDeLaSemana, formatearDinero, formatearFecha, formatearHora, horaLocal, plural } from "@/shared/formato";
+import { Mostrador } from "./Mostrador";
 
-export const metadata: Metadata = { title: "Resumen" };
+export const metadata: Metadata = { title: "Hoy" };
 export const dynamic = "force-dynamic";
 
-export default async function PaginaResumen() {
+export default async function PaginaHoy() {
   const casos = await casosDeUso();
-  const [r, avisos] = await Promise.all([casos.obtenerResumen.ejecutar(), casos.obtenerAvisosPendientes.ejecutar()]);
-  const { membresiasMes, ventasMes, ventasHoy } = r.ingresos;
+  const gestionaMantenimiento = await tienePermiso("mantenimiento.gestionar");
+  const [r, hoy, rachas, habituales, veDineroDelMes, gestionaRespaldos, maquinas, gastos] = await Promise.all([
+    casos.obtenerResumen.ejecutar(),
+    casos.obtenerEntradasDeHoy.ejecutar(),
+    casos.obtenerRachas.ejecutar(3),
+    casos.obtenerHabituales.ejecutar(5),
+    tienePermiso("dinero.historial"),
+    tienePermiso("respaldos.gestionar"),
+    casos.obtenerTableroDeMantenimiento.ejecutar(),
+    gestionaMantenimiento ? casos.obtenerResumenDeGastos.ejecutar() : null,
+  ]);
+  const fallas = maquinas.cuentas.conFalla + maquinas.cuentas.fueraDeServicio;
+  const { membresiasMes, ventasMes, ventasHoy, membresiasHoy } = r.ingresos;
   const dia = diaDeLaSemana(r.hoy);
+  const diferencia = hoy.entradas.length - hoy.semanaPasadaALaMismaHora;
+
+  const pendientes = [
+    { titulo: "Socios por recuperar", icono: "socios" as const, detalle: "Vencieron en los últimos 30 días", cuenta: r.vencidosRecientes.length, href: "/socios?filtro=vencida" },
+    { titulo: "Productos por resurtir", icono: "inventario" as const, detalle: "Agotados o en su mínimo", cuenta: r.stockBajo.length, href: "/inventario?filtro=bajo" },
+    ...(maquinas.cuentas.activos > 0
+      ? [
+          {
+            titulo: "Máquinas con falla", icono: "alerta" as const,
+            detalle: maquinas.cuentas.fueraDeServicio > 0 ? `${maquinas.cuentas.fueraDeServicio} fuera de servicio` : "Reportadas, se pueden usar con cuidado",
+            cuenta: fallas,
+            href: "/mantenimiento?filtro=atencion",
+          },
+          ...(gestionaMantenimiento
+            ? [
+                {
+                  titulo: "Mantenimiento preventivo", icono: "llave" as const,
+                  detalle: maquinas.cuentas.vencidos > 0 ? `${maquinas.cuentas.vencidos} ${maquinas.cuentas.vencidos === 1 ? "ya vencido" : "ya vencidos"}` : "Toca en los próximos 14 días",
+                  cuenta: maquinas.cuentas.preventivosPorHacer,
+                  href: "/mantenimiento?filtro=atencion",
+                },
+              ]
+            : []),
+        ]
+      : []),
+    ...(gastos && gastos.pendientes > 0
+      ? [{ titulo: "Pagos a técnicos", icono: "ventas" as const, detalle: `Se deben ${formatearDinero(gastos.porPagar)}`, cuenta: gastos.pendientes, href: "/mantenimiento/por-pagar" }]
+      : []),
+    // Si la computadora falla, sin esta copia se pierde todo: se recuerda hasta que se configure.
+    ...(carpetaExtra() || !gestionaRespaldos ? [] : [{ titulo: "Copia de respaldo", icono: "respaldos" as const, detalle: "Configura Google Drive o una USB", cuenta: 1, href: "/respaldos" }]),
+  ];
+
+  const porHacer = pendientes.filter((p) => p.cuenta > 0);
+  const alDia = pendientes.filter((p) => p.cuenta === 0);
+
+  const recientes = [...hoy.entradas].sort((x, y) => y.registradaEn.localeCompare(x.registradaEn));
+  const fecha = new Intl.DateTimeFormat("es-MX", { timeZone: entorno.zonaHoraria, weekday: "long", day: "numeric", month: "long" }).format(new Date());
 
   return (
-    <div className="space-y-8">
-      <Encabezado
-        titulo="Resumen"
-        descripcion={`${dia[0].toUpperCase()}${dia.slice(1)} ${formatearFechaLarga(r.hoy)}`}
-        acciones={
-          <>
-            <Link href="/ventas" className="boton-secundario">
-              <Icono nombre="ventas" className="size-4" />
-              Registrar venta
-            </Link>
-            <Link href="/socios/nuevo" className="boton">
-              <Icono nombre="mas" className="size-4" />
-              Registrar socio
-            </Link>
-          </>
-        }
-      />
+    <div className="pagina">
+      <header>
+        <h1 className="titulo first-letter:uppercase">{fecha}</h1>
+        <p className="mt-1.5 text-[0.95rem] text-gris">
+          {plural(hoy.entradas.length, "entrada")} hasta ahora · <Comparacion diferencia={diferencia} dia={dia} />
+        </p>
+      </header>
 
-      {avisos.length > 0 && (
-        <Link
-          href="/avisos"
-          className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-rojo/25 bg-rojo-tenue px-5 py-4 hover:border-rojo/45"
-        >
-          <span className="flex items-center gap-3">
-            <Icono nombre="avisos" className="size-5 text-rojo" />
-            <span>
-              <strong className="font-semibold">
-                {avisos.length === 1 ? "Hay 1 aviso" : `Hay ${avisos.length} avisos`} por mandar hoy
-              </strong>
-              <span className="block text-sm text-gris">Recordatorios de vencimiento por WhatsApp, listos para enviar.</span>
-            </span>
-          </span>
-          <span className="inline-flex items-center gap-0.5 text-sm font-semibold">
-            Ver avisos
-            <Icono nombre="adelante" className="size-4" />
-          </span>
-        </Link>
-      )}
-
-      <Indicadores
-        datos={[
-          { etiqueta: "Socios activos", valor: r.totalSocios, detalle: `${r.vigentes} con membresía vigente` },
-          {
-            etiqueta: "Vencen esta semana",
-            valor: r.porVencer.length,
-            alerta: r.porVencer.some((f) => f.diasRestantes <= 1),
-            detalle: avisos.length > 0 ? `${avisos.length} por avisar hoy` : "Sin avisos pendientes",
-          },
-          {
-            etiqueta: "Ingresos del mes",
-            valor: formatearDinero(membresiasMes + ventasMes),
-            detalle: `Membresías ${formatearDinero(membresiasMes)} · Tienda ${formatearDinero(ventasMes)}`,
-          },
-          {
-            etiqueta: "Ventas de hoy",
-            valor: formatearDinero(ventasHoy),
-            detalle: (
-              <Link href="/ventas" className="enlace text-tinta">
-                Ver corte del día
-              </Link>
-            ),
-          },
-        ]}
-      />
-
-      <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_21rem]">
-        <section aria-labelledby="titulo-por-vencer" className="min-w-0">
-          <EncabezadoSeccion id="titulo-por-vencer" titulo="Vencen en los próximos 7 días" />
-          {r.porVencer.length === 0 ? (
-            <p className="superficie px-5 py-8 text-center text-gris">Nadie vence esta semana.</p>
-          ) : (
-            <ol className="superficie divide-y divide-linea">
-              {r.porVencer.map((fila) => (
-                <FilaVencimientoProximo key={fila.socioId} fila={fila} />
-              ))}
-            </ol>
-          )}
-        </section>
-
-        <section aria-labelledby="titulo-stock" className="min-w-0">
-          <EncabezadoSeccion
-            id="titulo-stock"
-            titulo="Por resurtir"
-            enlace={{ href: "/inventario?filtro=bajo", texto: "Inventario" }}
-          />
-          {r.stockBajo.length === 0 ? (
-            <p className="superficie px-5 py-8 text-center text-gris">Todo el inventario está por encima del mínimo.</p>
-          ) : (
-            <ul className="superficie divide-y divide-linea">
-              {r.stockBajo.slice(0, 7).map((p) => (
-                <li key={p.id}>
-                  <Link href={`/inventario/${p.id}`} className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-[#fafaf8]">
-                    <span className="min-w-0">
-                      <span className="block truncate font-semibold">{p.nombre}</span>
-                      <span className="text-sm text-gris">
-                        Quedan <strong className="font-semibold text-tinta tabular-nums">{p.stock}</strong> · mínimo {p.stockMinimo}
-                      </span>
-                    </span>
-                    <EstadoStockInsignia estado={estadoDeStock(p)} />
-                  </Link>
-                </li>
-              ))}
-              {r.stockBajo.length > 7 && (
-                <li className="px-4 py-2.5 text-sm text-gris">y {r.stockBajo.length - 7} productos más</li>
-              )}
-            </ul>
-          )}
-        </section>
-      </div>
-
-      <section aria-labelledby="titulo-vencidos">
-        <EncabezadoSeccion
-          id="titulo-vencidos"
-          titulo="Vencidos en el último mes"
-          descripcion="Socios a los que vale la pena invitar a regresar."
+      <div className="con-lateral">
+      <div className="bloques">
+        <Mostrador
+          zonaHoraria={entorno.zonaHoraria}
+          gimnasio={entorno.nombreGimnasio}
+          habituales={habituales}
+          ultimo={recientes[0] ? { nombre: recientes[0].nombre, hora: formatearHora(recientes[0].registradaEn, entorno.zonaHoraria) } : null}
         />
-        {r.vencidosRecientes.length === 0 ? (
-          <p className="superficie px-5 py-8 text-center text-gris">No hay membresías vencidas recientemente.</p>
-        ) : (
-          <div className="superficie overflow-x-auto">
-            <table className="tabla">
-              <thead>
-                <tr>
-                  <th>Socio</th>
-                  <th>Plan</th>
-                  <th>Venció</th>
-                  <th><span className="sr-only">Acciones</span></th>
-                </tr>
-              </thead>
+
+        <Panel
+          titulo="Lista de hoy"
+          accion={recientes.length > 0 && <EnlacePanel href="/asistencias">{recientes.length > 6 ? `Ver las ${recientes.length}` : "Ver en Entradas"}</EnlacePanel>}
+        >
+          {recientes.length === 0 ? (
+            <p className="rounded-[10px] border-[1.5px] border-dashed border-linea-fuerte px-4 py-6 text-center text-gris">Todavía no llega nadie.</p>
+          ) : (
+            <table className="-mt-1 w-full text-[0.92rem]">
               <tbody>
-                {r.vencidosRecientes.map((f) => (
-                  <tr key={f.socioId}>
-                    <td><Link href={`/socios/${f.socioId}`} className="enlace">{f.nombre}</Link></td>
-                    <td className="text-tinta-suave">{f.planNombre}</td>
-                    <td className="whitespace-nowrap">
-                      {formatearFecha(f.fechaFin)}
-                      <span className="ml-2 text-sm text-gris">{describirDiasRestantes(f.diasRestantes).toLowerCase()}</span>
+                {recientes.slice(0, 6).map((e) => (
+                  <tr key={e.id} className="border-b border-dashed border-linea last:border-0">
+                    <td className="w-[4.5rem] py-2.5 font-bold tabular-nums">{formatearHora(e.registradaEn, entorno.zonaHoraria)}</td>
+                    <td className="py-2.5">
+                      <Link href={`/socios/${e.socioId}`} className="enlace font-medium">{e.nombre}</Link>
                     </td>
-                    <td className="text-right">
-                      <div className="flex justify-end gap-2">
-                        {f.telefono && <BotonWhatsApp compacto telefono={f.telefono} mensaje={recordatorio(f)} />}
-                        <Link href={`/socios/${f.socioId}#renovar`} className="boton-secundario boton-chico">Renovar</Link>
-                      </div>
+                    <td className="py-2.5 text-[0.8rem] font-bold tracking-[0.06em] text-hilo tabular-nums">Nº {String(e.numero).padStart(2, "0")}</td>
+                    <td className="py-2.5 text-right text-[0.8rem]">
+                      {e.excepcion ? (
+                        <span className="font-bold text-ambar">Excepción</span>
+                      ) : (
+                        <Icono nombre="check" className="ml-auto size-4 text-gris" />
+                      )}
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          </div>
+          )}
+        </Panel>
+      </div>
+
+      <aside className="bloques">
+        <dl className="grid grid-cols-2 gap-4">
+          <EtiquetaCifra
+            className="col-span-2"
+            cifra={{
+              etiqueta: "Entradas de hoy",
+              icono: "entradas",
+              destacada: true,
+              valor: hoy.entradas.length,
+              comparacion: compararCon(hoy.entradas.length, hoy.semanaPasadaALaMismaHora, { contra: `vs. el ${dia} pasado a esta hora` }),
+              barras: { valores: hoy.porHora.slice(6, 23), resaltar: hoy.horaActual - 6, titulo: "Entradas por hora, de 6:00 a 22:00" },
+              detalle: `${hoy.entradas.length > 0 ? `La última a las ${formatearHora(recientes[0].registradaEn, entorno.zonaHoraria)}` : "Todavía no llega nadie"} · vs. el ${dia} pasado a esta hora`,
+            }}
+          />
+          <EtiquetaCifra
+            cifra={{
+              etiqueta: "Vigentes", icono: "credencial", valor: r.vigentes,
+              avance: { valor: r.vigentes, total: r.totalSocios, tono: "verde" },
+              detalle: `${r.vigentes === 1 ? "Membresía" : "Membresías"} de ${plural(r.totalSocios, "socio")}`,
+            }}
+          />
+          {veDineroDelMes ? (
+            <EtiquetaCifra
+              cifra={{ etiqueta: "Este mes", icono: "ventas", valor: formatearDinero(membresiasMes + ventasMes), detalle: `Ingresos · hoy ${formatearDinero(membresiasHoy + ventasHoy)}` }}
+            />
+          ) : (
+            <EtiquetaCifra
+              cifra={{
+                etiqueta: "Cobrado hoy",
+                icono: "ventas",
+                valor: formatearDinero(membresiasHoy + ventasHoy),
+                detalle: `${formatearDinero(membresiasHoy)} membresías · ${formatearDinero(ventasHoy)} tienda`,
+              }}
+            />
+          )}
+        </dl>
+
+        <Panel titulo="Por vencer" accion={<EnlacePanel href="/socios?filtro=por_vencer">Ver todos</EnlacePanel>}>
+          {r.porVencer.length === 0 ? (
+            <p className="text-[0.88rem] text-gris">Nadie vence en los próximos 7 días.</p>
+          ) : (
+            <ul>
+              {r.porVencer.slice(0, 5).map((f) => (
+                <FilaVence key={f.socioId} fila={f} hoy={r.hoy} />
+              ))}
+            </ul>
+          )}
+        </Panel>
+
+        {rachas.length > 0 && (
+          <Panel titulo="Rachas más largas">
+            <ol>
+              {rachas.map((x) => (
+                <li key={x.socioId} className="border-b border-dashed border-linea py-2.5 last:border-0">
+                  <div className="flex items-baseline justify-between gap-3">
+                    <Link href={`/socios/${x.socioId}`} className="enlace min-w-0 truncate font-medium">{x.nombre}</Link>
+                    <span className="shrink-0 text-[0.8rem] text-gris">
+                      <b className="cifra mr-1 text-[1.25rem] text-tinta">{x.dias}</b>
+                      {x.dias === 1 ? "día" : "días"}
+                    </span>
+                  </div>
+                  {/* Un punto de cruz por cada día seguido, como se marca a mano. */}
+                  <p aria-hidden className="mt-0.5 truncate font-bold leading-none tracking-[0.18em] text-hilo/80">
+                    {"×".repeat(Math.min(x.dias, 21))}
+                    {x.dias > 21 && <span className="text-[0.7rem] tracking-normal text-gris"> +{x.dias - 21}</span>}
+                  </p>
+                </li>
+              ))}
+            </ol>
+          </Panel>
         )}
-      </section>
 
-      <section className="flex flex-wrap items-center justify-between gap-4 rounded-md border border-dashed border-linea-fuerte px-5 py-4">
-        <div>
-          <h2 className="subtitulo">Respaldo de la información</h2>
-          <p className="text-sm text-gris">
-            La app guarda una copia diaria en la computadora. Aquí puedes descargar una al momento, por ejemplo para una USB.
-          </p>
-        </div>
-        <a href="/api/respaldo" className="boton-secundario">
-          <Icono nombre="descargar" className="size-4" />
-          Descargar respaldo
-        </a>
-      </section>
+        <Panel titulo="Pendientes del turno">
+          {porHacer.length === 0 ? (
+            <p className="text-[0.88rem] text-gris">Todo al día. Buen turno.</p>
+          ) : (
+            <ul>
+              {porHacer.map((p) => (
+                <li key={p.titulo}>
+                  <Link href={p.href} className="group flex items-center justify-between gap-3 border-b border-dashed border-linea py-2.5 last:border-0">
+                    <Emblema icono={p.icono} hilo={p.icono === "alerta" ? "rojo" : "carbon"} tamano="sm" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-[0.88rem] font-semibold group-hover:underline">{p.titulo}</span>
+                      <span className="block text-[0.75rem] text-gris">{p.detalle}</span>
+                    </span>
+                    <span className="cifra text-[1.45rem]">{p.cuenta}</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+          {alDia.length > 0 && porHacer.length > 0 && (
+            <p className="mt-2.5 text-[0.75rem] text-gris">Al día: {alDia.map((p) => p.titulo.toLowerCase()).join(", ")}.</p>
+          )}
+        </Panel>
+      </aside>
+      </div>
     </div>
   );
 }
 
-function EncabezadoSeccion({
-  id,
-  titulo,
-  descripcion,
-  enlace,
-}: {
-  id: string;
-  titulo: string;
-  descripcion?: string;
-  enlace?: { href: string; texto: string };
-}) {
+function Comparacion({ diferencia, dia }: { diferencia: number; dia: string }) {
+  if (diferencia === 0) return <>igual que el {dia} pasado a esta hora</>;
+  const sube = diferencia > 0;
   return (
-    <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-      <h2 id={id} className="subtitulo">{titulo}</h2>
-      {descripcion && <p className="text-sm text-gris">{descripcion}</p>}
-      {enlace && (
-        <Link href={enlace.href} className="inline-flex items-center gap-0.5 text-sm font-semibold text-gris hover:text-tinta">
-          {enlace.texto}
-          <Icono nombre="adelante" className="size-4" />
-        </Link>
+    <>
+      {Math.abs(diferencia)} {sube ? "más" : "menos"} que el {dia} pasado
+    </>
+  );
+}
+
+function FilaVence({ fila, hoy }: { fila: FilaVencimiento; hoy: string }) {
+  const dias = Math.max(0, fila.diasRestantes);
+  const color = fila.diasRestantes <= 1 ? "text-hilo" : "text-ambar";
+  return (
+    <li className="flex items-center gap-3 border-b border-dashed border-linea py-2 last:border-0">
+      <span className={`grid size-[38px] shrink-0 place-items-center rounded-full border-[1.5px] border-dashed border-current font-titulos text-[1.1rem] ${color}`} title={describirDiasRestantes(fila.diasRestantes)}>
+        {dias}
+      </span>
+      <span className="min-w-0 flex-1">
+        <Link href={`/socios/${fila.socioId}`} className="enlace block truncate text-[0.9rem] font-medium">{fila.nombre}</Link>
+        <span className={`text-[0.75rem] ${fila.diasRestantes <= 1 ? "font-semibold text-rojo" : "text-gris"}`}>
+          {describirDiasRestantes(fila.diasRestantes)} · {formatearFecha(fila.fechaFin)}
+        </span>
+      </span>
+      {fila.telefono && (
+        <BotonWhatsApp
+          compacto
+          telefono={fila.telefono}
+          contexto={{
+            socioId: fila.socioId,
+            nombre: fila.nombre.split(" ")[0],
+            nombreCompleto: fila.nombre,
+            gimnasio: entorno.nombreGimnasio,
+            hoy,
+            hora: horaLocal(entorno.zonaHoraria),
+            situacion: "por_vencer",
+            diasRestantes: fila.diasRestantes,
+            fechaFin: fila.fechaFin,
+            plan: fila.planNombre,
+          }}
+        />
       )}
-    </div>
-  );
-}
-
-function recordatorio(f: FilaVencimiento) {
-  return mensajeRecordatorio(f.nombre.split(" ")[0], { diasRestantes: f.diasRestantes, fechaFin: f.fechaFin }, entorno.nombreGimnasio);
-}
-
-/** Cuenta regresiva en una columna fija: se lee de un vistazo, de arriba abajo. */
-function FilaVencimientoProximo({ fila }: { fila: FilaVencimiento }) {
-  const urgente = fila.diasRestantes <= 1;
-  const numero = fila.diasRestantes === 0 ? "Hoy" : String(fila.diasRestantes);
-  const unidad = fila.diasRestantes === 0 ? "" : fila.diasRestantes === 1 ? "día" : "días";
-
-  return (
-    <li className="flex flex-wrap items-center gap-x-4 gap-y-3 px-4 py-3 sm:flex-nowrap">
-      <div
-        className={`flex w-14 shrink-0 flex-col items-center rounded-md border py-1.5 ${
-          urgente ? "border-rojo/30 bg-rojo-tenue text-rojo" : "border-linea bg-hundido text-tinta"
-        }`}
-      >
-        <span className="cifra text-[1.7rem]">{numero}</span>
-        {unidad && <span className="text-[0.7rem] font-semibold uppercase tracking-wider">{unidad}</span>}
-      </div>
-      <div className="min-w-0 flex-1">
-        <Link href={`/socios/${fila.socioId}`} className="enlace block truncate text-[1.02rem]">
-          {fila.nombre}
-        </Link>
-        <p className="text-sm text-gris">
-          {fila.planNombre} · válido hasta el {formatearFecha(fila.fechaFin)}
-        </p>
-      </div>
-      <div className="flex w-full gap-2 sm:w-auto">
-        {fila.telefono && <BotonWhatsApp compacto telefono={fila.telefono} mensaje={recordatorio(fila)} />}
-        <Link href={`/socios/${fila.socioId}#renovar`} className="boton-secundario boton-chico">Renovar</Link>
-      </div>
     </li>
   );
 }

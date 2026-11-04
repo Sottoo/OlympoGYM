@@ -1,5 +1,7 @@
-import { CATEGORIAS_PRODUCTO } from "@/domain/entities/Producto";
-import { obtenerAcceso } from "@/infrastructure/auth/autenticacion";
+import { hoyEn } from "@/domain/shared/fechas";
+import { entorno } from "@/infrastructure/config/entorno";
+import { CATEGORIAS_PRODUCTO, costoPorUnidad, esGranel } from "@/domain/entities/Producto";
+import { tienePermiso } from "@/infrastructure/auth/autenticacion";
 import { casosDeUso } from "@/infrastructure/contenedor";
 import { generarCsv, respuestaCsv } from "@/presentation/csv";
 
@@ -9,8 +11,7 @@ const ESTADOS = { suficiente: "Suficiente", bajo: "Stock bajo", agotado: "Agotad
 
 /** Descarga del inventario completo en un archivo que abre Excel. */
 export async function GET() {
-  const acceso = await obtenerAcceso();
-  if (acceso.tipo !== "autorizado") return new Response("No autorizado", { status: 401 });
+  if (!(await tienePermiso("exportar"))) return new Response("Tu perfil no permite exportar a Excel.", { status: 403 });
 
   const casos = await casosDeUso();
   const [activos, inactivos] = await Promise.all([
@@ -18,18 +19,20 @@ export async function GET() {
     casos.listarProductos.ejecutar({ filtro: "inactivos" }),
   ]);
   const csv = generarCsv(
-    ["Producto", "Categoría", "Código", "Precio de venta", "Costo", "Existencia", "Stock mínimo", "Estado", "Valor a costo"],
+    ["Producto", "Categoría", "Código", "Se vende", "Precio de venta", "Costo", "Existencia", "Stock mínimo", "Unidad", "Estado", "Valor a costo"],
     [...activos.productos, ...inactivos.productos].map(({ producto: p, estado }) => [
       p.nombre,
       CATEGORIAS_PRODUCTO[p.categoria],
       p.codigo,
+      esGranel(p) ? `A granel (${p.porcionGramos} g por ${p.porcionNombre ?? "porción"})` : "Por pieza",
       p.precioVenta,
       p.costo,
       p.stock,
       p.stockMinimo,
+      esGranel(p) ? "gramos" : "piezas",
       p.activo ? ESTADOS[estado] : "Desactivado",
-      p.costo === null ? null : p.costo * p.stock,
+      costoPorUnidad(p) === null ? null : Math.round(costoPorUnidad(p)! * p.stock * 100) / 100,
     ]),
   );
-  return respuestaCsv(`inventario-${new Date().toISOString().slice(0, 10)}.csv`, csv);
+  return respuestaCsv(`inventario-${hoyEn(entorno.zonaHoraria)}.csv`, csv);
 }

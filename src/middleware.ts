@@ -1,25 +1,18 @@
-import type { NextRequest } from "next/server";
-import { NextResponse } from "next/server";
-import { modoDemo } from "@/infrastructure/config/entorno";
-import { actualizarSesion } from "@/infrastructure/supabase/actualizarSesion";
+import { NextResponse, type NextRequest } from "next/server";
 
-/** Protege el panel: sin sesión, todo redirige a /login. */
-export async function middleware(request: NextRequest) {
-  if (modoDemo) return NextResponse.next();
+/**
+ * El programa solo se usa desde su propia ventana, en esta computadora.
+ * Cualquier petición que llegue con otro nombre de servidor (por ejemplo,
+ * una página de internet que intente hablar con el programa) se rechaza.
+ */
+const HOST_LOCAL = /^(localhost|127\.0\.0\.1)(:\d+)?$/;
 
-  const { respuesta, usuario } = await actualizarSesion(request);
-  const enLogin = request.nextUrl.pathname.startsWith("/login");
-
-  if (!usuario && !enLogin) {
-    return NextResponse.redirect(new URL("/login", request.url));
-  }
-  if (usuario && enLogin) {
-    return NextResponse.redirect(new URL("/panel", request.url));
-  }
-  return respuesta;
+export function middleware(peticion: NextRequest) {
+  const host = peticion.headers.get("host") ?? "";
+  if (!HOST_LOCAL.test(host)) return new NextResponse("Acceso no permitido.", { status: 403 });
+  return NextResponse.next();
 }
 
 export const config = {
-  // Todo excepto archivos estáticos.
-  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+  matcher: ["/((?!_next/static|_next/image|icon.png).*)"],
 };

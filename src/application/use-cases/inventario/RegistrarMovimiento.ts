@@ -3,6 +3,7 @@ import type { InventarioRepository } from "@/domain/repositories/InventarioRepos
 import type { ProductoRepository } from "@/domain/repositories/ProductoRepository";
 import type { Reloj } from "@/domain/services/Reloj";
 import { ErrorDeDominio, NoEncontrado } from "@/domain/shared/ErrorDeDominio";
+import { LIMITES, revisarEntero } from "@/domain/shared/reglas";
 
 export interface EntradaMovimiento {
   productoId: string;
@@ -29,22 +30,22 @@ export class RegistrarMovimiento {
 
     const { cantidad, tipo } = entrada;
     const nota = entrada.nota?.trim() || null;
-    if (!Number.isInteger(cantidad) || cantidad < 0 || (tipo !== "ajuste" && cantidad === 0)) {
-      throw new ErrorDeDominio(tipo === "ajuste" ? "Escribe cuántas piezas contaste." : "La cantidad debe ser un número entero mayor a cero.");
-    }
+    const errorCantidad = revisarEntero(cantidad, { min: tipo === "ajuste" ? 0 : 1, max: 1_000_000, que: tipo === "ajuste" ? "Las piezas contadas" : "La cantidad" });
+    if (errorCantidad) throw new ErrorDeDominio(errorCantidad, "cantidad");
+    if (nota && nota.length > LIMITES.nota) throw new ErrorDeDominio(`La nota puede tener hasta ${LIMITES.nota} caracteres.`, "nota");
 
     let cambio: number;
     if (tipo === "entrada") {
       cambio = cantidad;
     } else if (tipo === "merma") {
       if (cantidad > producto.stock) {
-        throw new ErrorDeDominio(`Solo hay ${producto.stock} en stock; no puedes dar de baja ${cantidad}.`);
+        throw new ErrorDeDominio(`Solo hay ${producto.stock} en stock; no puedes dar de baja ${cantidad}.`, "cantidad");
       }
-      if (!nota) throw new ErrorDeDominio("Indica el motivo de la merma (caducado, dañado, extraviado…).");
+      if (!nota) throw new ErrorDeDominio("Indica el motivo de la merma (caducado, dañado, extraviado…).", "nota");
       cambio = -cantidad;
     } else {
       cambio = cantidad - producto.stock;
-      if (cambio === 0) throw new ErrorDeDominio("El conteo coincide con el stock registrado; no hay nada que ajustar.");
+      if (cambio === 0) throw new ErrorDeDominio("El conteo coincide con el stock registrado; no hay nada que ajustar.", "cantidad");
     }
 
     return this.inventario.registrarMovimiento({

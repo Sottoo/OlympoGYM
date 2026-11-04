@@ -10,4 +10,8 @@ export interface SocioRepository {
   darDeBaja(id: string, fecha: FechaISO, motivo: string): Promise<void>;
   reactivar(id: string): Promise<void>;
   cambiarFoto(id: string, ruta: string | null): Promise<void>;
+  /** Socios (activos o de baja) con ese celular de 10 dígitos. */
+  buscarPorCelular(celular: string): Promise<Socio[]>;
+  /** Borra un registro recién creado que aún no tiene pagos, membresías ni entradas. */
+  eliminarSinHistorial(id: string): Promise<void>;
 }

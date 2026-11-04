@@ -11,4 +11,16 @@ dist-escritorio
 
 # Archivos del cliente y copias sueltas: no van al repositorio público
 docs/*.docx
+docs/*.pdf
 *.zip
+
+# Base de datos local de desarrollo
+.datos
+
+# Copias de trabajo y herramientas de diseño: se quedan solo en esta computadora
+.respaldo-*/
+.retirados-*/
+.impeccable/
+.sincronizacion/
+Claude outputs/
+docs/

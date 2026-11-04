@@ -1,15 +1,10 @@
-import {
-  type DatosNuevoSocio,
-  type Socio,
-  TAMANO_MAXIMO_FOTO,
-  TIPOS_FOTO,
-  validarMotivoBaja,
-  validarNuevoSocio,
-} from "@/domain/entities/Socio";
+import { type DatosNuevoSocio, type Socio, validarMotivoBaja, validarNuevoSocio } from "@/domain/entities/Socio";
 import type { SocioRepository } from "@/domain/repositories/SocioRepository";
 import type { AlmacenFotos } from "@/domain/services/AlmacenFotos";
 import type { Reloj } from "@/domain/services/Reloj";
 import { ErrorDeDominio, NoEncontrado } from "@/domain/shared/ErrorDeDominio";
+import { revisarFoto } from "@/domain/shared/imagen";
+import { asegurarCelularLibre } from "./celular";
 
 export class EditarSocio {
   constructor(
@@ -20,13 +15,14 @@ export class EditarSocio {
   async ejecutar(socioId: string, datos: DatosNuevoSocio): Promise<Socio> {
     const validos = validarNuevoSocio(datos, this.reloj.hoy());
     if (!(await this.socios.obtenerPorId(socioId))) throw new NoEncontrado("El socio");
+    await asegurarCelularLibre(this.socios, validos.telefono, socioId);
     return this.socios.actualizar(socioId, validos);
   }
 }
 
 /**
  * Da de baja a un socio. No se borra nada: su historial de pagos y
- * membresías se conserva, deja de contar como activo y ya no recibe avisos.
+ * membresías se conserva y deja de contar como activo.
  */
 export class DarDeBajaSocio {
   constructor(
@@ -62,8 +58,7 @@ export class CambiarFotoSocio {
   ) {}
 
   async ejecutar(socioId: string, imagen: Uint8Array, tipo: string): Promise<void> {
-    if (!(TIPOS_FOTO as readonly string[]).includes(tipo)) throw new ErrorDeDominio("La foto debe ser una imagen JPG, PNG o WebP.");
-    if (imagen.byteLength > TAMANO_MAXIMO_FOTO) throw new ErrorDeDominio("La foto pesa demasiado; prueba con otra.");
+    revisarFoto(imagen, tipo);
     const socio = await this.socios.obtenerPorId(socioId);
     if (!socio) throw new NoEncontrado("El socio");
     const anterior = socio.foto; // se guarda antes: cambiarFoto puede modificar el mismo objeto

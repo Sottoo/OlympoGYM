@@ -1,7 +1,9 @@
 /**
  * Después de `next build`, deja lista la carpeta .next/standalone para la app
  * de escritorio: copia los archivos estáticos (Next no lo hace solo) y quita
- * cualquier archivo .env para que ninguna clave termine dentro del instalador.
+ * cualquier archivo .env y la base de desarrollo (.datos) para que ni claves
+ * ni datos de prueba terminen dentro del instalador: el programa se entrega
+ * vacío.
  */
 import { cpSync, existsSync, readdirSync, rmSync } from "node:fs";
 import path from "node:path";
@@ -19,5 +21,9 @@ if (existsSync(path.join(raiz, "public"))) cpSync(path.join(raiz, "public"), pat
 for (const archivo of readdirSync(standalone).filter((a) => a.startsWith(".env"))) {
   rmSync(path.join(standalone, archivo));
   console.log(`Quitado ${archivo} de la versión de escritorio.`);
+}
+if (existsSync(path.join(standalone, ".datos"))) {
+  rmSync(path.join(standalone, ".datos"), { recursive: true, force: true });
+  console.log("Quitada la base de desarrollo (.datos) de la versión de escritorio.");
 }
 console.log("Versión de escritorio lista en .next/standalone");

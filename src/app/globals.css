@@ -1,34 +1,81 @@
 @import "tailwindcss";
 
 /*
- * Olimpo GYM: identidad rojo y negro.
+ * ══════════════════════════════════════════════════════════════════════
+ *  OLIMPO · Sistema de diseño "Bordado"
+ * ══════════════════════════════════════════════════════════════════════
  *
- * El rojo es un color intenso, así que se usa poco y con intención:
- * la acción principal de cada pantalla, la sección activa del menú y lo
- * que requiere atención inmediata. El resto de la interfaz vive en negro
- * y neutros cálidos, que cansan menos la vista en un turno largo.
+ *  La app se viste como la ropa del gimnasio. Reglas:
+ *
+ *  · Fondo de algodón hueso con una trama finísima; hojas color crudo con
+ *    una costura punteada por dentro (la "hoja"). El riel lateral es negro,
+ *    como la playera, con el logo bordado.
+ *  · Tinta negra para todo lo importante: texto, botones, sellos. El
+ *    color solo aparece en estados: verde bosque (pasa), mostaza (por
+ *    vencer) y ladrillo (vencido o alerta).
+ *  · Marcellus (mayúsculas que recuerdan las letras bordadas del logo) para
+ *    títulos, nombres y cifras; Archivo para el texto.
+ *  · Los detalles son de taller de costura: costuras punteadas, etiquetas
+ *    tejidas con su orilla de color, parches bordados.
+ *  · Ligero: sin desenfoques ni capas fijas, para que vaya fluido.
+ *
+ *  Nota: los nombres de color "vino" se conservan para no tocar cada
+ *  pantalla; en este sistema apuntan a la tinta negra.
  */
 @theme {
-  --color-fondo: #f4f4f2;
-  --color-superficie: #ffffff;
-  --color-hundido: #f0f0ed;
-  --color-tinta: #17171b;
-  --color-tinta-suave: #3b3b42;
-  --color-gris: #6a6a72;
-  --color-linea: #e3e3df;
-  --color-linea-fuerte: #cdcdc8;
-  --color-carbon: #0f0f11;
-  --color-carbon-claro: #1c1c20;
-  --color-rojo: #c1121f;
-  --color-rojo-oscuro: #9c0e19;
-  --color-rojo-tenue: #fbeced;
-  --color-verde: #1c7045;
-  --color-verde-tenue: #e7f2eb;
-  --color-ambar: #955800;
-  --color-ambar-tenue: #fbf0de;
+  /* Tela */
+  --color-fondo: #eeebe4; /* algodón */
+  --color-superficie: #f8f6f1; /* hoja cruda */
+  --color-hundido: #ece8df;
+  --color-elevado: #fbfaf6;
+  --color-carbon: #141312; /* playera */
+  --color-carbon-claro: #2a2825;
 
-  --font-display: "Barlow Condensed", "Arial Narrow", system-ui, sans-serif;
-  --font-sans: "Barlow", system-ui, -apple-system, "Segoe UI", sans-serif;
+  /* Tinta */
+  --color-tinta: #161514;
+  --color-tinta-suave: #4a4741;
+  --color-gris: #65615a;
+  --color-linea: #ddd7cc;
+  --color-linea-fuerte: #c9c2b5;
+
+  /* Acento = tinta (se conserva el nombre "vino" por compatibilidad) */
+  --color-vino: #161514;
+  --color-vino-oscuro: #000000;
+  --color-vino-claro: #2f2c28;
+  --color-vino-vivo: #161514;
+  --color-vino-tenue: #e6e1d6;
+  --color-marca: #161514;
+  --color-oro: #a8771c;
+  --color-oro-tenue: #f1e6cf;
+
+  /* Hilo rojo: el rojo de la marca. Se usa poco, como el hilo de color en
+     un bordado: el número de socio, lo que vence, el aviso que urge. */
+  --color-hilo: #a8231b;
+
+  /* Estados */
+  --color-rojo: #a8231b;
+  --color-rojo-oscuro: #861a14;
+  --color-rojo-tenue: #f4e0dc;
+  --color-verde: #2f6b45; /* bosque */
+  --color-verde-tenue: #e0ebe2;
+  --color-ambar: #86601a; /* mostaza (oscurecida para que el texto se lea bien) */
+  --color-ambar-tenue: #f3e8cf;
+
+  /* Gráficas: tinta y mostaza; rampa secuencial de algodón a tinta. */
+  --color-serie-1: #161514;
+  --color-serie-1-claro: #c9c2b5;
+  --color-serie-2: #a8771c;
+  --color-secuencia-0: #ece8df;
+  --color-secuencia-1: #d9d3c6;
+  --color-secuencia-2: #b9b1a2;
+  --color-secuencia-3: #8c8576;
+  --color-secuencia-4: #514c44;
+  --color-secuencia-5: #161514;
+
+  --font-sans: var(--fuente-texto), system-ui, "Segoe UI", sans-serif;
+  --font-titulos: var(--fuente-cero), var(--fuente-titulos), Georgia, serif;
+
+  --ease-suave: cubic-bezier(0.2, 0.7, 0.2, 1);
 }
 
 @layer base {
@@ -36,14 +83,21 @@
     background: var(--color-fondo);
     color: var(--color-tinta);
     font-family: var(--font-sans);
-    font-size: 15.5px;
+    font-size: 15px;
     -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    /* Marcellus solo tiene un peso: nunca se finge una negrita. */
+    font-synthesis-weight: none;
   }
   body {
-    background: var(--color-fondo);
+    background-color: var(--color-fondo);
+    /* trama de algodón */
+    background-image:
+      repeating-linear-gradient(0deg, rgb(0 0 0 / 0.018) 0 1px, transparent 1px 3px),
+      repeating-linear-gradient(90deg, rgb(0 0 0 / 0.018) 0 1px, transparent 1px 3px);
   }
   :focus-visible {
-    outline: 2px solid var(--color-tinta);
+    outline: 2px dashed var(--color-tinta);
     outline-offset: 2px;
   }
   input, select, textarea, button {
@@ -52,95 +106,493 @@
   button:not(:disabled), summary {
     cursor: pointer;
   }
+  a, button, input, select, textarea, summary {
+    transition: color 0.15s var(--ease-suave), background-color 0.15s var(--ease-suave), border-color 0.15s var(--ease-suave),
+      box-shadow 0.15s var(--ease-suave), outline-color 0.15s var(--ease-suave);
+  }
+  input[type="radio"], input[type="checkbox"] {
+    accent-color: var(--color-tinta);
+  }
   ::selection {
-    background: var(--color-rojo);
-    color: white;
+    background: var(--color-tinta);
+    color: #fff;
+  }
+  h1, h2, h3 {
+    text-wrap: balance;
+  }
+  kbd {
+    font-family: var(--font-sans);
+    font-size: 0.7rem;
+    font-weight: 600;
+    padding: 0.05rem 0.4rem;
+    border: 1.5px solid currentColor;
+    border-radius: 5px;
+    opacity: 0.55;
   }
 }
 
 @layer components {
+  /*
+   * ── Retícula de las pantallas ─────────────────────────────────
+   * Un solo sistema para todas las secciones, para que la vista viaje
+   * siempre por los mismos carriles:
+   *   · El contenido vive en un ancho máximo y centrado: en pantallas
+   *     grandes queda el mismo margen a ambos lados.
+   *   · Encabezado → contenido: 28 px. Entre hojas: 24 px.
+   *   · Una columna principal + una lateral de 360 px (formularios,
+   *     resúmenes), o dos mitades iguales. Nada de anchos sueltos.
+   */
+  .contenido { width: 100%; max-width: 1320px; margin-inline: auto; }
+  /* minmax(0, 1fr): una fila de pestañas o una tabla ancha se desplaza dentro de su caja en vez de ensanchar la página. */
+  .pagina { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.75rem; align-content: start; }
+  .bloques { display: grid; gap: 1.5rem; align-content: start; min-width: 0; }
+  .con-lateral { display: grid; gap: 1.5rem; align-items: start; }
+  .mitades { display: grid; gap: 1.5rem; align-items: stretch; }
+  @media (min-width: 1180px) {
+    .con-lateral { grid-template-columns: minmax(0, 1fr) 360px; }
+  }
+  @media (min-width: 1024px) {
+    .mitades { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+  /* Título de un grupo de hojas (fuera de ellas), con su acción a la derecha. */
+  .cabecera-seccion { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 0.5rem 1rem; }
+  .cabecera-seccion p { font-size: 0.86rem; color: var(--color-gris); margin-top: 0.15rem; }
+
+  /* Íconos de trazo: el relleno duotono se oculta para que queden como dibujo a tinta. */
+  .icono .duo { display: none; }
+
+  /* El cero viene de Archivo: se ajusta a un trazo fino y algo condensado
+     para que no desentone con Marcellus. */
+  .font-titulos, .titulo, .subtitulo, .cifra { font-variation-settings: "wght" 300, "wdth" 88; }
+
   /* ── Tipografía ─────────────────────────────────────────────── */
   .titulo {
-    font-family: var(--font-display);
-    font-weight: 700;
-    font-size: clamp(1.9rem, 3.2vw, 2.4rem);
-    line-height: 1;
-    text-transform: uppercase;
-    letter-spacing: 0.01em;
+    font-family: var(--font-titulos);
+    font-weight: 400;
+    font-size: clamp(2rem, 2.8vw, 2.6rem);
+    line-height: 1.05;
+    letter-spacing: 0.005em;
   }
   .subtitulo {
-    font-weight: 600;
-    font-size: 1.05rem;
-    line-height: 1.3;
+    font-family: var(--font-titulos);
+    font-weight: 400;
+    font-size: 1.3rem;
+    line-height: 1.2;
   }
-  /* Rótulo pequeño en mayúsculas: encabezados de tabla, etiquetas de cifras. */
+  /* Rótulo: mayúsculas pequeñas y espaciadas, como la etiqueta de una prenda. */
   .rotulo {
     font-size: 0.72rem;
-    font-weight: 600;
-    letter-spacing: 0.08em;
+    font-weight: 700;
+    letter-spacing: 0.14em;
     text-transform: uppercase;
     color: var(--color-gris);
   }
   .cifra {
-    font-family: var(--font-display);
-    font-weight: 600;
-    font-variant-numeric: tabular-nums;
+    font-family: var(--font-titulos);
+    font-weight: 400;
     line-height: 1;
+    font-variant-numeric: lining-nums tabular-nums;
+  }
+  .dorsal {
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    font-variant-numeric: tabular-nums;
+  }
+  .numero-socio {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--color-gris);
+    font-variant-numeric: tabular-nums;
+  }
+  .regla {
+    border-top: 1.5px dashed var(--color-linea);
   }
   .enlace {
-    font-weight: 600;
+    font-weight: 700;
+    text-decoration: underline;
+    text-decoration-color: transparent;
     text-underline-offset: 3px;
   }
   .enlace:hover {
-    text-decoration: underline;
+    text-decoration-color: currentColor;
+  }
+
+  /* ── Hoja: tela cruda con su costura por dentro ─────────────── */
+  .panel, .superficie {
+    position: relative;
+    background: var(--color-superficie);
+    border-radius: 14px;
+    box-shadow: 0 1px 0 rgb(0 0 0 / 0.06), 0 10px 24px -18px rgb(60 40 20 / 0.45);
+  }
+  /* Las hojas sin relleno propio (tablas, listas) dejan el contenido dentro de la costura. */
+  .superficie { padding: 9px; }
+  .panel::before, .superficie::before {
+    content: "";
+    position: absolute;
+    inset: 7px;
+    border: 1.5px dashed rgb(22 21 20 / 0.2);
+    border-radius: 9px;
+    pointer-events: none;
+    z-index: 1;
   }
 
   /* ── Formularios ────────────────────────────────────────────── */
+  /*
+   * Los campos son bolsillos de tela: borde liso en reposo y, al escribir,
+   * la costura de hilo rojo se asienta por dentro ("aquí estás").
+   */
   .campo {
     display: block;
     width: 100%;
-    border: 1px solid var(--color-linea-fuerte);
-    background: var(--color-superficie);
-    border-radius: 5px;
-    padding: 0.55rem 0.7rem;
-    transition: border-color 120ms, box-shadow 120ms;
+    border: 1.5px solid var(--color-linea-fuerte);
+    background: var(--color-elevado);
+    border-radius: 10px;
+    padding: 0.62rem 0.85rem;
+    outline: 1.5px dashed transparent;
+    outline-offset: -2px;
+    transition: border-color 0.15s var(--ease-suave), box-shadow 0.15s var(--ease-suave), outline-color 0.15s var(--ease-suave),
+      outline-offset 0.22s var(--ease-suave), background-color 0.15s var(--ease-suave);
   }
-  .campo:hover { border-color: var(--color-gris); }
-  .campo:focus {
-    outline: none;
+  .campo::placeholder { color: #8a847a; }
+  .campo:hover { border-color: #aaa294; }
+  .campo:focus, .campo:focus-visible, .campo-compuesto:focus-within, .selector-abierto {
     border-color: var(--color-tinta);
-    box-shadow: 0 0 0 3px rgb(23 23 27 / 0.12);
+    outline: 1.5px dashed var(--color-hilo);
+    outline-offset: -6px;
+    box-shadow: 0 0 0 3px rgb(22 21 20 / 0.06);
   }
+  .campo-error, .campo-error:focus-within { border-color: var(--color-rojo); background: #fdf7f5; }
   .etiqueta {
     display: block;
-    font-weight: 600;
-    font-size: 0.9rem;
-    margin-bottom: 0.35rem;
+    font-weight: 700;
+    font-size: 0.84rem;
+    margin-bottom: 0.4rem;
   }
-  .ayuda { font-size: 0.83rem; color: var(--color-gris); margin-top: 0.3rem; }
+  .ayuda { font-size: 0.8rem; color: var(--color-gris); margin-top: 0.35rem; }
+  .ayuda:empty { display: none; }
 
-  /* ── Botones ────────────────────────────────────────────────── */
+  /* ── Validación: la pista bajo el campo se vuelve aviso cuando algo no cuadra ── */
+  .mensaje-campo { display: flex; align-items: flex-start; gap: 0.4rem; margin-top: 0.4rem; font-size: 0.8rem; line-height: 1.35; color: var(--color-gris); }
+  .mensaje-error { color: var(--color-rojo); font-weight: 600; animation: aparece 0.18s var(--ease-suave) both; }
+  .mensaje-nota { color: var(--color-ambar); font-weight: 600; animation: aparece 0.18s var(--ease-suave) both; }
+  .campo[aria-invalid="true"],
+  .campo-compuesto:has(> input[aria-invalid="true"]) {
+    border-color: var(--color-rojo);
+    background: #fdf7f5;
+    animation: sacude 0.28s ease-out;
+  }
+  .campo[aria-invalid="true"]:focus,
+  .campo-compuesto:has(> input[aria-invalid="true"]):focus-within { outline-color: var(--color-rojo); }
+  .aviso-pendientes {
+    display: flex; align-items: flex-start; gap: 0.6rem;
+    border-radius: 10px; background: var(--color-rojo-tenue); padding: 0.7rem 1rem;
+    font-size: 0.9rem; outline: 1px dashed rgb(168 35 27 / 0.35); outline-offset: -4px;
+  }
+  /* ── Mensaje por WhatsApp: vista previa antes de abrir la app ── */
+  .dialogo-whatsapp {
+    width: min(48rem, calc(100vw - 2rem));
+    max-height: calc(100vh - 3rem);
+    margin: auto;
+    border-radius: 16px;
+    background: var(--color-superficie);
+    color: var(--color-tinta);
+    box-shadow: 0 24px 60px -20px rgb(20 15 10 / 0.55);
+    outline: 1.5px dashed rgb(22 21 20 / 0.2);
+    outline-offset: -8px;
+  }
+  .dialogo-whatsapp[open] { animation: aparece 0.18s var(--ease-suave) both; }
+  .dialogo-whatsapp::backdrop { background: rgb(22 21 20 / 0.45); }
+  .burbuja-whatsapp {
+    position: relative;
+    max-height: 22rem;
+    overflow-y: auto;
+    border-radius: 4px 14px 14px 14px;
+    background: #e3eee4;
+    padding: 0.9rem 1.05rem;
+    font-size: 0.92rem;
+    line-height: 1.5;
+    box-shadow: 0 1px 0 rgb(0 0 0 / 0.08);
+  }
+  .boton-whatsapp {
+    display: inline-flex; align-items: center; gap: 0.45rem;
+    border-radius: 10px; background: var(--color-verde); color: #fff;
+    padding: 0.55rem 1rem; font-size: 0.88rem; font-weight: 700;
+  }
+  .boton-whatsapp:hover { background: #255a39; }
+
+  /* Atajo de inventario: hoja pequeña con ícono, título y una línea. */
+  /* ── Emblemas: parches bordados con el dibujo de cada producto, máquina o sección ── */
+  .emblema {
+    position: relative; display: inline-grid; place-items: center; flex-shrink: 0;
+    width: var(--t); height: var(--t);
+    color: var(--hilo);
+    transition: transform 0.35s cubic-bezier(0.3, 1.5, 0.5, 1), filter 0.2s var(--ease-suave);
+  }
+  /* Parche recortado (productos y máquinas): no lleva caja; la orilla sigue al dibujo. */
+  .emblema-recortado .pictograma { width: 100%; height: 100%; overflow: visible; }
+  /* Se levanta un poco, como si se despegara, al pasar el cursor por su fila o su botón. */
+  :is(a, button, tr, li, label):hover > .emblema-recortado,
+  :is(a, button, tr, li, label):hover > * > .emblema-recortado,
+  :is(a, button, tr, li, label):hover > * > * > .emblema-recortado { transform: translateY(-1.5px) rotate(-5deg) scale(1.06); }
+  /* Los parches redondos y las fotos giran apenas, como una etiqueta que se mueve al rozarla. */
+  :is(a, button, li, label):hover > :is(.emblema-redondo, .emblema-foto),
+  :is(a, button, li, label):hover > * > :is(.emblema-redondo, .emblema-foto) { transform: rotate(-6deg) scale(1.05); }
+  :is(a, button):active > .emblema { transform: scale(0.92); transition-duration: 0.08s; }
+  /* Parche redondo tejido (secciones, avisos): tela, orilla de overlock y el ícono en hilo. */
+  .emblema-redondo {
+    border-radius: 50%;
+    background-color: var(--tela);
+    background-image: repeating-linear-gradient(35deg, rgb(0 0 0 / 0.035) 0 1px, transparent 1px 2.6px);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--hilo) 30%, transparent), 0 3px 8px -4px rgb(40 25 10 / 0.45);
+  }
+  .emblema-redondo::after {
+    content: ""; position: absolute; inset: max(2px, calc(var(--t) * 0.06)); border-radius: 50%;
+    border: max(1.6px, calc(var(--t) * 0.04)) dotted color-mix(in srgb, var(--hilo) 55%, transparent);
+    pointer-events: none;
+  }
+  .emblema-icono { width: 50%; height: 50%; position: relative; z-index: 1; }
+  .emblema-negro { background-image: repeating-linear-gradient(35deg, rgb(255 255 255 / 0.04) 0 1px, transparent 1px 2.6px); box-shadow: 0 0 0 2px #e9e4d9, 0 0 0 3px rgb(0 0 0 / 0.25), 0 8px 16px -8px rgb(0 0 0 / 0.55); }
+  .emblema-negro::after { border-color: rgb(242 239 232 / 0.6); }
+  /* Foto del producto: impresa en una etiqueta con orilla de tela. */
+  .emblema-foto {
+    border-radius: calc(var(--t) * 0.24); overflow: hidden;
+    background: #f6f0e4; padding: max(2px, calc(var(--t) * 0.05));
+    box-shadow: 0 0 0 1px rgb(90 70 50 / 0.22), 0 4px 10px -5px rgb(40 25 10 / 0.5);
+  }
+  .emblema-foto img { width: 100%; height: 100%; object-fit: cover; border-radius: calc(var(--t) * 0.18); }
+  /* La puntada y el brillo van solo sobre el hilo, nunca sobre los recortes de tela. */
+  .satinado [fill^="var(--tela"], .satinado [stroke^="var(--tela"] { display: none; }
+  /* El ícono de la sección abierta se borda en un parchecito rojo que "se cose" al llegar. */
+  .ojal-menu { transition: transform 0.25s var(--ease-suave); }
+  .group:hover .ojal-menu:not(.ojal-activo) { transform: scale(1.1); }
+  .ojal-activo {
+    position: relative; background: #a8231b;
+    box-shadow: 0 0 0 1.5px rgb(0 0 0 / 0.5), 0 3px 8px -2px rgb(168 35 27 / 0.6);
+    animation: ojal 0.45s cubic-bezier(0.3, 1.6, 0.5, 1) both;
+  }
+  .ojal-activo::after { content: ""; position: absolute; inset: 2.5px; border-radius: 50%; border: 1.4px dotted rgb(255 255 255 / 0.55); }
+  .emblema-apagado { filter: grayscale(1); opacity: 0.45; }
+
+  .atajo {
+    display: flex; align-items: center; gap: 0.85rem;
+    border-radius: 14px; background: var(--color-superficie); padding: 0.85rem 1rem;
+    box-shadow: 0 1px 0 rgb(0 0 0 / 0.06), 0 10px 24px -18px rgb(60 40 20 / 0.45);
+    outline: 1.5px dashed rgb(22 21 20 / 0.16); outline-offset: -6px;
+  }
+  .atajo:hover { outline-color: rgb(22 21 20 / 0.45); }
+
+  /* Un toque en un producto de la Tienda: un pulso breve para confirmar. */
+  .toque { animation: toque 0.22s var(--ease-suave); }
+  @keyframes toque {
+    0% { transform: scale(1); }
+    40% { transform: scale(0.97); }
+    100% { transform: scale(1); }
+  }
+
+  @keyframes sacude {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-3px); }
+    75% { transform: translateX(3px); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .campo[aria-invalid="true"], .campo-compuesto:has(> input[aria-invalid="true"]) { animation: none; }
+  }
+
+  /* Números sin las flechitas del sistema: se ajustan con − y +. */
+  input[type="number"] { appearance: textfield; -moz-appearance: textfield; }
+  input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+
+  /* Notas: hoja rayada, con los renglones al paso del texto. */
+  textarea.campo {
+    --renglon: 1.7rem;
+    line-height: var(--renglon);
+    padding-top: 0.42rem;
+    resize: vertical;
+    min-height: calc(var(--renglon) * 3 + 0.9rem);
+    background-image: linear-gradient(transparent calc(var(--renglon) - 1px), rgb(22 21 20 / 0.09) calc(var(--renglon) - 1px));
+    background-size: 100% var(--renglon);
+    background-position: 0 0.42rem;
+    background-attachment: local;
+  }
+
+  /* Por si queda algún <select> del sistema: misma flecha que los propios. */
+  select.campo {
+    appearance: none;
+    padding-right: 2.4rem;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 14'%3E%3Cpath d='M3 5.2l4 4 4-4' fill='none' stroke='%23161514' stroke-width='1.8' stroke-linecap='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.85rem center;
+    background-size: 14px;
+  }
+
+  /* Campo con piezas adentro (−, +, $, MXN, ojo, calendario). */
+  .campo-compuesto { display: flex; align-items: stretch; padding: 0; overflow: hidden; }
+  .campo-compuesto > input { flex: 1; min-width: 0; border: 0; background: transparent; padding: 0.62rem 0.85rem; outline: none; box-shadow: none; }
+  .campo-compuesto .paso {
+    display: grid; place-items: center; width: 2.6rem; flex-shrink: 0;
+    color: var(--color-tinta-suave);
+    border-right: 1.5px dashed var(--color-linea);
+  }
+  .campo-compuesto .paso-fin { border-right: 0; border-left: 1.5px dashed var(--color-linea); }
+  .campo-compuesto .paso:hover:not(:disabled) { background: var(--color-hundido); color: var(--color-tinta); }
+  .campo-compuesto .paso:disabled { opacity: 0.35; cursor: default; }
+  .adorno-inicio { display: grid; place-items: center; padding-left: 0.9rem; font-family: var(--font-titulos); font-size: 1.15rem; color: var(--color-gris); }
+  .adorno-fin { display: grid; place-items: center; padding-right: 0.7rem; font-size: 0.78rem; color: var(--color-gris); }
+  /* La moneda como etiqueta tejida pequeñita. */
+  .moneda {
+    align-self: center; margin-right: 0.55rem; padding: 0.12rem 0.4rem;
+    font-size: 0.62rem; font-weight: 800; letter-spacing: 0.14em; color: var(--color-gris);
+    border: 1px dashed var(--color-linea-fuerte); border-radius: 3px; background: var(--color-hundido);
+  }
+
+  /* ── Selector propio ── */
+  .selector { display: flex; align-items: center; gap: 0.6rem; text-align: left; cursor: pointer; }
+  .selector-flecha {
+    display: grid; place-items: center; width: 1.6rem; height: 1.6rem; margin: -0.2rem -0.35rem -0.2rem 0;
+    border-radius: 999px; color: var(--color-tinta);
+    border: 1.2px dashed var(--color-linea-fuerte);
+  }
+  .selector:hover .selector-flecha, .selector-abierto .selector-flecha { border-color: var(--color-tinta); }
+  .selector-compacto { padding: 0.36rem 0.6rem 0.36rem 0.75rem; font-size: 0.84rem; border-radius: 8px; min-width: 9.5rem; }
+  .selector-compacto.selector-abierto, .selector-compacto:focus-visible { outline-offset: -4px; }
+  .selector-compacto .selector-flecha { width: 1.3rem; height: 1.3rem; }
+
+  /* El muestrario: la hoja que se despliega con las opciones o el calendario. */
+  .muestrario {
+    z-index: 60;
+    padding: 8px;
+    background: var(--color-superficie);
+    border-radius: 12px;
+    box-shadow: 0 0 0 1px var(--color-linea), 0 22px 44px -22px rgb(40 28 12 / 0.55), 0 4px 10px -6px rgb(40 28 12 / 0.25);
+    transform-origin: top center;
+    animation: despliega 0.16s var(--ease-suave) both;
+  }
+  .muestrario-arriba { transform-origin: bottom center; }
+  .muestrario::before {
+    content: ""; position: absolute; inset: 4px; pointer-events: none;
+    border: 1.5px dashed rgb(22 21 20 / 0.16); border-radius: 9px;
+  }
+  .opcion-muestrario {
+    position: relative; display: flex; align-items: center; gap: 0.6rem;
+    padding: 0.55rem 0.7rem; border-radius: 7px; cursor: pointer;
+    font-size: 0.9rem; font-weight: 600; color: var(--color-tinta-suave);
+  }
+  .opcion-activa { background: var(--color-hundido); color: var(--color-tinta); }
+  .opcion-elegida { color: var(--color-tinta); font-weight: 800; }
+
+  /* ── Calendario de parches ── */
+  .calendario { position: relative; padding: 6px 4px 4px; }
+  .titulo-calendario {
+    font-family: var(--font-titulos); font-size: 1.22rem; line-height: 1.2;
+    padding: 0.15rem 0.6rem; border-radius: 8px;
+  }
+  .titulo-calendario:hover { background: var(--color-hundido); }
+  .paso-redondo {
+    display: grid; place-items: center; width: 2rem; height: 2rem; border-radius: 999px;
+    border: 1.5px solid var(--color-linea-fuerte); background: var(--color-elevado); color: var(--color-tinta);
+  }
+  .paso-redondo:hover:not(:disabled) { border-color: var(--color-tinta); }
+  .paso-redondo:disabled { opacity: 0.3; cursor: default; }
+  .dia-parche {
+    position: relative; display: grid; place-items: center; width: 2.25rem; height: 2.25rem; border-radius: 999px;
+    font-family: var(--font-titulos); font-size: 0.98rem; color: var(--color-tinta);
+    font-variation-settings: "wght" 300, "wdth" 88;
+    border: 1.3px dashed transparent;
+  }
+  .dia-parche:hover:not(:disabled) { border-color: var(--color-linea-fuerte); background: var(--color-hundido); }
+  .dia-parche:disabled { color: #bdb6a9; cursor: default; }
+  .dia-parche:focus-visible { outline: 1.5px solid var(--color-tinta); outline-offset: 1.5px; }
+  .dia-hoy { border-color: var(--color-hilo); color: var(--color-hilo); }
+  .dia-hoy:hover:not(:disabled) { border-color: var(--color-hilo); }
+  /* El elegido queda cosido: parche negro con su orilla punteada en hilo crudo. */
+  .dia-elegido, .dia-elegido:hover:not(:disabled) {
+    background: var(--color-tinta); color: #f2efe8; border-color: transparent;
+    box-shadow: inset 0 0 0 3px var(--color-tinta), inset 0 0 0 4.3px rgb(242 239 232 / 0.55);
+    animation: sello 0.3s cubic-bezier(0.3, 1.6, 0.5, 1) both;
+  }
+  .celda-calendario {
+    padding: 0.6rem 0; border-radius: 8px; font-size: 0.9rem; font-weight: 600; color: var(--color-tinta-suave);
+    border: 1.3px dashed transparent;
+  }
+  .celda-calendario:hover:not(:disabled) { background: var(--color-hundido); color: var(--color-tinta); }
+  .celda-calendario:disabled { opacity: 0.3; cursor: default; }
+  .celda-actual { background: var(--color-tinta); color: #f2efe8; outline: 1px dashed rgb(242 239 232 / 0.5); outline-offset: -4px; }
+  .celda-actual:hover:not(:disabled) { background: #2f2c28; color: #fff; }
+
+  /* ── Opciones de "elige una": botón de ropa ── */
+  .boton-ropa .cosido { opacity: 0; transform: scale(0.6) rotate(-40deg); transform-origin: center; transition: opacity 0.15s, transform 0.28s cubic-bezier(0.3, 1.5, 0.5, 1); }
+  .boton-ropa .ojal { transition: opacity 0.15s; }
+  :has(> input:checked) > .boton-ropa .cosido, :has(> input:checked) > * > .boton-ropa .cosido, .boton-ropa-si .cosido { opacity: 1; transform: none; }
+  :has(> input:checked) > .boton-ropa .ojal, :has(> input:checked) > * > .boton-ropa .ojal, .boton-ropa-si .ojal { opacity: 0; }
+  .boton-ropa-no .cosido { opacity: 0; }
+  .tarjeta-opcion {
+    position: relative; display: flex; align-items: center; gap: 0.8rem; cursor: pointer;
+    padding: 0.85rem 1rem; border-radius: 14px;
+    border: 1.5px solid var(--color-linea); background: var(--color-elevado);
+    transition: border-color 0.15s, background-color 0.15s, box-shadow 0.15s;
+  }
+  .tarjeta-opcion:hover { border-color: var(--color-linea-fuerte); }
+  .tarjeta-opcion:has(input:checked) { border-color: var(--color-tinta); background: var(--color-hundido); box-shadow: 0 6px 14px -12px rgb(40 28 12 / 0.6); }
+  .tarjeta-opcion:has(input:focus-visible) { outline: 2px dashed var(--color-tinta); outline-offset: 2px; }
+
+  /* ── Casilla: la marca es una puntada en cruz que se borda al marcar ── */
+  .casilla { display: flex; align-items: flex-start; gap: 0.7rem; cursor: pointer; font-size: 0.9rem; }
+  .caja-casilla {
+    flex-shrink: 0; width: 1.35rem; height: 1.35rem; margin-top: 0.05rem; padding: 2px;
+    border-radius: 5px; border: 1.5px solid var(--color-linea-fuerte); background: var(--color-elevado);
+    transition: border-color 0.15s, background-color 0.15s;
+  }
+  .casilla:hover .caja-casilla { border-color: var(--color-tinta); }
+  .casilla input:focus-visible + .caja-casilla { outline: 2px dashed var(--color-tinta); outline-offset: 2px; }
+  .casilla input:checked + .caja-casilla { border-color: var(--color-tinta); background: var(--color-superficie); }
+  .caja-casilla .puntada { fill: none; stroke: var(--color-hilo); stroke-width: 2.6; stroke-linecap: round; stroke-dasharray: 15; stroke-dashoffset: 15; transition: stroke-dashoffset 0.18s ease-out; }
+  .caja-casilla .puntada-2 { transition-delay: 0s; }
+  .casilla input:checked + .caja-casilla .puntada { stroke-dashoffset: 0; }
+  .casilla input:checked + .caja-casilla .puntada-2 { transition-delay: 0.14s; }
+
+  /* ── Archivo: zona punteada ── */
+  .zona-archivo {
+    position: relative; display: flex; align-items: center; gap: 0.9rem;
+    padding: 1.1rem 1.2rem; border-radius: 12px;
+    border: 2px dashed var(--color-linea-fuerte); background: var(--color-hundido);
+    transition: border-color 0.15s, background-color 0.15s;
+  }
+  .zona-archivo:hover, .zona-encima { border-color: var(--color-tinta); background: var(--color-elevado); }
+  .zona-lista { border-style: solid; border-color: var(--color-tinta); background: var(--color-elevado); }
+  .zona-archivo:has(input:focus-visible) { outline: 2px dashed var(--color-tinta); outline-offset: 3px; }
+
+  /* ── Botones: con costura interior ──────────────────────────── */
   .boton, .boton-secundario, .boton-oscuro, .boton-peligro {
+    position: relative;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 0.45rem;
-    border-radius: 5px;
-    padding: 0.55rem 1rem;
-    font-weight: 600;
-    font-size: 0.95rem;
-    line-height: 1.25;
+    gap: 0.6rem;
+    border-radius: 10px;
+    padding: 0.7rem 1.15rem;
+    font-weight: 700;
+    font-size: 0.9rem;
+    letter-spacing: 0.02em;
+    line-height: 1.2;
     white-space: nowrap;
-    border: 1px solid transparent;
-    transition: background 120ms, border-color 120ms, color 120ms;
+    border: 1.5px solid transparent;
   }
-  .boton { background: var(--color-rojo); color: white; }
-  .boton:hover { background: var(--color-rojo-oscuro); }
-  .boton-oscuro { background: var(--color-tinta); color: white; }
-  .boton-oscuro:hover { background: var(--color-tinta-suave); }
-  .boton-secundario { background: var(--color-superficie); color: var(--color-tinta); border-color: var(--color-linea-fuerte); }
+  .boton::after, .boton-oscuro::after {
+    content: "";
+    position: absolute;
+    inset: 3px;
+    border: 1px dashed rgb(255 255 255 / 0.42);
+    border-radius: 7px;
+    pointer-events: none;
+  }
+  .boton:active:not(:disabled), .boton-oscuro:active:not(:disabled), .boton-secundario:active:not(:disabled) {
+    transform: translateY(1px);
+  }
+  .boton, .boton-oscuro { background: var(--color-tinta); color: #fff; }
+  .boton:hover, .boton-oscuro:hover { background: #2f2c28; }
+  .boton-secundario { background: var(--color-elevado); color: var(--color-tinta); border-color: var(--color-linea-fuerte); }
   .boton-secundario:hover { border-color: var(--color-tinta); }
-  .boton-peligro { background: var(--color-superficie); color: var(--color-rojo); border-color: rgb(193 18 31 / 0.35); }
+  .boton-peligro { background: var(--color-elevado); color: var(--color-rojo); border-color: rgb(162 59 42 / 0.35); }
   .boton-peligro:hover { border-color: var(--color-rojo); background: var(--color-rojo-tenue); }
   .boton:disabled, .boton-oscuro:disabled {
     background: var(--color-linea-fuerte);
@@ -148,36 +600,281 @@
     cursor: not-allowed;
   }
   .boton-secundario:disabled, .boton-peligro:disabled {
-    opacity: 0.55;
+    opacity: 0.5;
     cursor: not-allowed;
   }
-  .boton-chico { padding: 0.35rem 0.7rem; font-size: 0.875rem; }
+  .boton-chico { padding: 0.4rem 0.75rem; font-size: 0.8rem; border-radius: 8px; }
+  .boton-chico::after { border-radius: 5px; }
 
-  /* ── Superficies y tablas ───────────────────────────────────── */
-  .superficie {
-    background: var(--color-superficie);
-    border: 1px solid var(--color-linea);
-    border-radius: 7px;
+  /* Etiqueta tejida: la de "Puede pasar". Trama vertical y costura blanca. */
+  .tejida {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.55rem 1rem;
+    border-radius: 3px;
+    font-weight: 800;
+    font-size: 0.8rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #fff;
+    background-color: var(--color-verde);
+    background-image: repeating-linear-gradient(90deg, rgb(255 255 255 / 0.07) 0 1px, transparent 1px 3px);
   }
-  .tabla { width: 100%; border-collapse: collapse; font-size: 0.95rem; }
+  .tejida::before {
+    content: "";
+    position: absolute;
+    inset: 3px;
+    border: 1px dashed rgb(255 255 255 / 0.6);
+    border-radius: 2px;
+    pointer-events: none;
+  }
+
+  /* Etiqueta tejida: la de las cifras. Como la etiqueta cosida dentro de una
+     prenda: trama fina, orilla de color a la izquierda (gris, o roja cuando
+     pide atención) y su costura por dentro.
+     Siempre en tres renglones: nombre arriba, cifra, y la explicación pegada
+     abajo; así en una fila todo queda a la misma altura. */
+  .etiqueta-tejida {
+    position: relative; overflow: hidden; isolation: isolate;
+    display: flex; flex-direction: column; gap: 10px;
+    min-height: 124px; border-radius: 12px;
+    padding: 15px 18px 15px 24px;
+    background-color: var(--color-superficie);
+    background-image: repeating-linear-gradient(90deg, rgb(0 0 0 / 0.02) 0 1px, transparent 1px 2.5px);
+    box-shadow: 0 0 0 1px rgb(22 21 20 / 0.06), 0 1px 0 rgb(0 0 0 / 0.04), 0 8px 20px -16px rgb(60 40 20 / 0.5);
+    transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.25s;
+  }
+  /* La orilla: hilo de color tejido en franjas finas, pegada al canto (la recorta la esquina). */
+  .etiqueta-tejida::before {
+    content: ""; position: absolute; z-index: -1; left: 0; top: 0; bottom: 0; width: 6px;
+    background: repeating-linear-gradient(0deg, #8d867a 0 2px, #a9a296 2px 3.5px);
+    box-shadow: 1px 0 0 rgb(0 0 0 / 0.06);
+  }
+  /* La costura por dentro, a la misma distancia de la orilla que de los demás cantos. */
+  .etiqueta-tejida::after {
+    content: ""; position: absolute; inset: 5px 5px 5px 11px; border-radius: 8px; pointer-events: none;
+    border: 1px dashed rgb(22 21 20 / 0.11);
+    transition: inset 0.25s cubic-bezier(0.22, 1, 0.36, 1), border-color 0.25s;
+  }
+  .etiqueta-tejida:hover { transform: translateY(-2px); box-shadow: 0 0 0 1px rgb(22 21 20 / 0.08), 0 1px 0 rgb(0 0 0 / 0.04), 0 14px 24px -16px rgb(60 40 20 / 0.6); }
+  .etiqueta-tejida:hover::after { inset: 4px 4px 4px 10px; border-color: rgb(22 21 20 / 0.3); }
+
+  .etiqueta-nombre {
+    display: flex; align-items: center; gap: 9px; min-width: 0;
+    font-size: 0.82rem; font-weight: 600; line-height: 1.2; color: var(--color-tinta-suave);
+  }
+  /* La cifra ocupa siempre el mismo alto, sea grande o chica: las de una fila se alinean por abajo. */
+  .etiqueta-fila { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; min-width: 0; }
+  .etiqueta-valor { display: flex; align-items: flex-end; height: 2.4rem; }
+  /* Comparación junto al nombre: un botoncito tejido con su flecha. */
+  .etiqueta-comparacion {
+    margin-left: auto; display: inline-flex; align-items: center; gap: 3px; flex-shrink: 0;
+    border-radius: 999px; padding: 2px 8px 2px 7px; font-size: 0.7rem; font-weight: 700; font-variant-numeric: tabular-nums;
+    background: var(--color-hundido); color: var(--color-tinta-suave);
+    box-shadow: inset 0 0 0 1px rgb(22 21 20 / 0.08);
+  }
+  .etiqueta-comparacion > span { font-size: 0.56rem; }
+  .etiqueta-comparacion.va-bien { background: var(--color-verde-tenue); color: var(--color-verde); }
+  .etiqueta-comparacion.va-mal { background: var(--color-rojo-tenue); color: var(--color-rojo); }
+  .negra .etiqueta-comparacion { background: rgb(255 255 255 / 0.1); color: rgb(255 255 255 / 0.85); box-shadow: none; }
+  .negra .etiqueta-comparacion.va-bien { color: #8fd3a5; }
+  .negra .etiqueta-comparacion.va-mal { color: #f08a7c; }
+  /* Barritas bordadas junto a la cifra; crecen desde abajo al llegar. */
+  .etiqueta-barras { height: 34px; flex-shrink: 0; overflow: visible; margin-bottom: 3px; }
+  .etiqueta-barras rect { transform-box: fill-box; transform-origin: bottom; animation: crece 0.55s cubic-bezier(0.22, 1, 0.36, 1) backwards; }
+  .etiqueta-barras .barra { fill: #b9b1a2; }
+  .etiqueta-barras .barra-vacia { fill: #ddd7cc; }
+  .etiqueta-barras .barra-resaltada { fill: var(--color-tinta); }
+  .alerta .etiqueta-barras .barra-resaltada { fill: var(--color-rojo); }
+  .negra .etiqueta-barras .barra { fill: rgb(255 255 255 / 0.32); }
+  .negra .etiqueta-barras .barra-vacia { fill: rgb(255 255 255 / 0.12); }
+  .negra .etiqueta-barras .barra-resaltada { fill: #e2513f; }
+  .etiqueta-tejida:hover .etiqueta-barras .barra { fill: #8d867a; }
+  .negra.etiqueta-tejida:hover .etiqueta-barras .barra { fill: rgb(255 255 255 / 0.5); }
+  /* Hilo de avance: la pista es una costura punteada y el avance, hilo tejido que se va llenando. */
+  .etiqueta-avance {
+    position: relative; height: 6px; border-radius: 999px; margin-top: 1px;
+    background: repeating-linear-gradient(90deg, var(--color-linea-fuerte) 0 3px, transparent 3px 6px);
+  }
+  .etiqueta-avance > span {
+    position: absolute; inset: 0 auto 0 0; border-radius: 999px; min-width: 6px;
+    background: repeating-linear-gradient(-55deg, rgb(255 255 255 / 0.22) 0 1.5px, transparent 1.5px 4px), var(--avance, var(--color-tinta));
+    animation: llena 0.8s cubic-bezier(0.22, 1, 0.36, 1) 0.15s backwards;
+  }
+  .tono-verde { --avance: var(--color-verde); }
+  .tono-rojo { --avance: var(--color-rojo); }
+  .tono-ambar { --avance: #b98a2c; }
+  .negra .etiqueta-avance { background: repeating-linear-gradient(90deg, rgb(255 255 255 / 0.22) 0 3px, transparent 3px 6px); }
+  .negra .tono-tinta { --avance: #e2513f; }
+  .etiqueta-detalle { margin-top: auto; font-size: 0.76rem; line-height: 1.35; color: var(--color-gris); }
+
+  .etiqueta-compacta { min-height: 0; gap: 7px; padding: 13px 16px 13px 22px; }
+  .etiqueta-compacta .etiqueta-valor { height: 1.75rem; }
+
+  .etiqueta-tejida.alerta::before { background: repeating-linear-gradient(0deg, #a8231b 0 2px, #c4483e 2px 3.5px); }
+  .etiqueta-tejida.negra {
+    background-color: #1b1a18; color: #fff;
+    background-image: repeating-linear-gradient(90deg, rgb(255 255 255 / 0.03) 0 1px, transparent 1px 2.5px);
+    box-shadow: 0 1px 0 rgb(0 0 0 / 0.1), 0 10px 22px -14px rgb(20 10 5 / 0.7);
+  }
+  .etiqueta-tejida.negra::before { background: repeating-linear-gradient(0deg, #a8231b 0 2px, #e2513f 2px 3.5px); }
+  .etiqueta-tejida.negra::after { border-color: rgb(255 255 255 / 0.18); }
+  .etiqueta-tejida.negra:hover::after { border-color: rgb(255 255 255 / 0.4); }
+  .negra .etiqueta-nombre { color: rgb(255 255 255 / 0.78); }
+  .negra .etiqueta-detalle { color: rgb(255 255 255 / 0.56); }
+
+  /* El parchecito de la etiqueta: redondo, con su orilla de puntada; gira al pasar el cursor. */
+  .etiqueta-parche {
+    position: relative; display: grid; place-items: center; flex-shrink: 0;
+    width: 26px; height: 26px; border-radius: 50%;
+    background: #e8e3d9; color: #2a2825; box-shadow: 0 0 0 1px rgb(42 40 37 / 0.22);
+    transition: transform 0.35s cubic-bezier(0.3, 1.5, 0.5, 1);
+  }
+  .etiqueta-parche::after { content: ""; position: absolute; inset: 2px; border-radius: 50%; border: 1.2px dotted rgb(42 40 37 / 0.42); }
+  .etiqueta-tejida:hover .etiqueta-parche { transform: rotate(-12deg) scale(1.08); }
+  .alerta .etiqueta-parche { background: #f6e4df; color: var(--color-rojo); box-shadow: 0 0 0 1px rgb(168 35 27 / 0.3); }
+  .alerta .etiqueta-parche::after { border-color: rgb(168 35 27 / 0.45); }
+  .negra .etiqueta-parche { background: #2a2825; color: #e2513f; box-shadow: 0 0 0 1px rgb(255 255 255 / 0.2); }
+  .negra .etiqueta-parche::after { border-color: rgb(242 239 232 / 0.4); }
+
+  /* ── Tablas ─────────────────────────────────────────────────── */
+  .tabla { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
   .tabla th {
     text-align: left;
-    font-size: 0.72rem;
-    font-weight: 600;
-    letter-spacing: 0.08em;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
     text-transform: uppercase;
     color: var(--color-gris);
-    padding: 0.7rem 1rem;
-    background: var(--color-hundido);
-    border-bottom: 1px solid var(--color-linea);
+    padding: 1.1rem 1.1rem 0.6rem;
+    border-bottom: 1.5px dashed var(--color-linea);
     white-space: nowrap;
   }
-  .tabla td { padding: 0.75rem 1rem; border-bottom: 1px solid var(--color-linea); vertical-align: middle; }
+  .tabla td { padding: 0.72rem 1.1rem; border-bottom: 1px dashed var(--color-linea); vertical-align: middle; }
   .tabla tbody tr:last-child td { border-bottom: 0; }
-  .tabla tbody tr:hover td { background: #fafaf8; }
+  .tabla tbody tr:hover { background: rgb(22 21 20 / 0.025); }
   .tabla .numero { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+  /* ── Movimiento: breve ───────────────────────────────────────── */
+  .pantalla { animation: aparece 0.16s var(--ease-suave) both; }
+  .aparece { animation: aparece 0.25s var(--ease-suave) backwards; }
+  .despliegue { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.3s var(--ease-suave); }
+  .despliegue[data-abierto="true"] { grid-template-rows: 1fr; }
+  .despliegue > * { overflow: hidden; min-height: 0; }
+  .sube { animation: sube 0.3s var(--ease-suave) both; }
+  .fila-nueva { animation: fila-nueva 0.8s var(--ease-suave) both; }
+  /* El parche del socio se cose: entra girando apenas y se asienta. */
+  .parche-entra { animation: parche 0.55s cubic-bezier(0.3, 1.3, 0.5, 1) both; }
+  .sello-nuevo { animation: sello 0.35s cubic-bezier(0.3, 1.6, 0.5, 1) both; }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  * { transition: none !important; animation: none !important; }
+@keyframes aparece { from { opacity: 0; transform: translateY(4px); } }
+@keyframes sube { from { opacity: 0; transform: translateY(8px); } }
+@keyframes fila-nueva { from { opacity: 0; background: var(--color-hundido); } 30% { opacity: 1; } }
+@keyframes parche { from { opacity: 0; transform: scale(0.85) rotate(-12deg); } }
+@keyframes despliega { from { opacity: 0; transform: translateY(-4px) scale(0.98); } }
+@keyframes sello { from { opacity: 0; transform: scale(1.5) rotate(-20deg); } }
+@keyframes ojal { from { transform: scale(0.4) rotate(-90deg); opacity: 0; } }
+
+/* ── Movimiento con oficio: lo que llega se acomoda, lo que se toca responde ── */
+@layer components {
+  /* Cada pantalla entra por partes: encabezado, cifras, contenido. (Con "backwards":
+     al terminar no deja transformaciones que estorben a ventanas fijas ni a lo pegajoso.) */
+  .pantalla { animation-fill-mode: backwards; }
+  .pantalla > .pagina > * { animation: entra 0.5s var(--ease-suave) backwards; }
+  .pantalla > .pagina > :nth-child(2) { animation-delay: 50ms; }
+  .pantalla > .pagina > :nth-child(3) { animation-delay: 100ms; }
+  .pantalla > .pagina > :nth-child(4) { animation-delay: 150ms; }
+  .pantalla > .pagina > :nth-child(5) { animation-delay: 200ms; }
+  .pantalla > .pagina > :nth-child(n + 6) { animation-delay: 240ms; }
+
+  /* Las etiquetas de cifras llegan suaves, una tras otra. */
+  .etiqueta-tejida { animation: entra 0.5s cubic-bezier(0.22, 1, 0.36, 1) backwards; }
+  .etiqueta-tejida:nth-child(2) { animation-delay: 70ms; }
+  .etiqueta-tejida:nth-child(3) { animation-delay: 140ms; }
+  .etiqueta-tejida:nth-child(4) { animation-delay: 210ms; }
+
+  /* Filas y mosaicos llegan uno tras otro, como cuando se acomoda el anaquel. */
+  .tabla tbody tr, .escalonado > * { animation: fila 0.42s var(--ease-suave) backwards; }
+  :is(.tabla tbody, .escalonado) > :nth-child(2) { animation-delay: 30ms; }
+  :is(.tabla tbody, .escalonado) > :nth-child(3) { animation-delay: 60ms; }
+  :is(.tabla tbody, .escalonado) > :nth-child(4) { animation-delay: 90ms; }
+  :is(.tabla tbody, .escalonado) > :nth-child(5) { animation-delay: 120ms; }
+  :is(.tabla tbody, .escalonado) > :nth-child(6) { animation-delay: 150ms; }
+  :is(.tabla tbody, .escalonado) > :nth-child(7) { animation-delay: 180ms; }
+  :is(.tabla tbody, .escalonado) > :nth-child(8) { animation-delay: 210ms; }
+  :is(.tabla tbody, .escalonado) > :nth-child(n + 9) { animation-delay: 240ms; }
+
+  /* Los parches se "cosen" al aparecer: llegan girados y se asientan con rebote. */
+  .emblema-recortado, .emblema-foto { animation: cosido 0.55s cubic-bezier(0.3, 1.45, 0.5, 1) backwards; animation-delay: inherit; }
+
+  /* Tienda: el producto tocado salta y suelta un "+1" que sube. */
+  /* (El brinco va en el dibujo, no en el parche: así no se vuelve a "coser".) */
+  .toque .emblema > * { animation: salto 0.45s cubic-bezier(0.3, 1.7, 0.5, 1); }
+  .mas-uno {
+    position: absolute; left: 2.7rem; top: 0.1rem; z-index: 2; pointer-events: none;
+    font-weight: 800; font-size: 0.82rem; color: var(--color-verde); white-space: nowrap;
+    text-shadow: 0 0 0 transparent, 0 1px 0 #fff, 1px 0 0 #fff, -1px 0 0 #fff, 0 -1px 0 #fff;
+    animation: mas-uno 0.8s var(--ease-suave) both;
+  }
+  .contador-carrito { animation: brinco 0.32s cubic-bezier(0.3, 1.8, 0.5, 1); }
+
+  /* Mosaico de la Tienda: se levanta al pasar el cursor, se hunde al tocarlo y
+     muestra una puntada por dentro, como un bolsillo cosido. */
+  .mosaico { transition: transform 0.22s cubic-bezier(0.3, 1.4, 0.5, 1), box-shadow 0.22s var(--ease-suave), border-color 0.15s; }
+  .mosaico::before {
+    content: ""; position: absolute; inset: 4px; border-radius: 10px; pointer-events: none;
+    border: 1px dashed rgb(22 21 20 / 0.22); opacity: 0; transform: scale(1.02);
+    transition: opacity 0.2s var(--ease-suave), transform 0.25s var(--ease-suave);
+  }
+  .mosaico:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 12px 22px -16px rgb(60 40 20 / 0.7); }
+  .mosaico:hover:not(:disabled)::before, .mosaico-elegido::before { opacity: 1; transform: none; }
+  .mosaico:active:not(:disabled) { transform: translateY(0) scale(0.985); transition-duration: 0.08s; }
+  /* El ticket vacío espera con su parche meciéndose despacio. */
+  .ticket-vacio .emblema, .flota { display: inline-grid; animation: flota 3.8s ease-in-out infinite; }
+  /* Un error se sacude una vez, como quien dice "no" con la cabeza. */
+  .temblor { animation: aparece 0.25s var(--ease-suave) backwards, temblor 0.42s 0.05s ease-in-out; }
+  .entra-derecha { animation: entra-derecha 0.35s var(--ease-suave) backwards; }
+  .late { display: inline-block; animation: late 0.35s cubic-bezier(0.3, 1.6, 0.5, 1); }
+
+  /* Botones: se levantan apenas al pasar el cursor y se hunden al pulsarlos. */
+  :is(.boton, .boton-oscuro, .boton-secundario, .boton-peligro) {
+    transition: transform 0.18s cubic-bezier(0.3, 1.5, 0.5, 1), background-color 0.15s, border-color 0.15s, box-shadow 0.2s, color 0.15s;
+  }
+  :is(.boton, .boton-oscuro, .boton-secundario, .boton-peligro):hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 6px 14px -10px rgb(40 25 10 / 0.7); }
+  :is(.boton, .boton-oscuro, .boton-secundario, .boton-peligro):active:not(:disabled) { transform: translateY(1px) scale(0.98); box-shadow: none; transition-duration: 0.06s; }
+  /* La costura del botón se aprieta un poco al pasar el cursor. */
+  :is(.boton, .boton-oscuro)::after { transition: inset 0.2s var(--ease-suave), border-color 0.2s; }
+  :is(.boton, .boton-oscuro):hover:not(:disabled)::after { inset: 2.5px; border-color: rgb(255 255 255 / 0.62); }
+
+  /* Atajos y hojas que se abren: se levantan y su costura se marca. */
+  .atajo { transition: transform 0.22s cubic-bezier(0.3, 1.4, 0.5, 1), box-shadow 0.22s var(--ease-suave), outline-color 0.2s; }
+  .atajo:hover { transform: translateY(-2px); box-shadow: 0 1px 0 rgb(0 0 0 / 0.06), 0 16px 26px -18px rgb(60 40 20 / 0.6); }
+  .atajo:active { transform: translateY(0) scale(0.99); transition-duration: 0.08s; }
+
+  /* Foto del producto o socio en el formulario: llega "cosida" y responde al arrastrar. */
+  .marco-foto { transition: transform 0.25s cubic-bezier(0.3, 1.5, 0.5, 1), box-shadow 0.2s, outline-color 0.2s; }
+  .marco-foto-encima { transform: scale(1.04) rotate(-2deg); outline: 2px dashed var(--color-tinta); outline-offset: 4px; }
+  .marco-foto img { animation: cosido 0.5s cubic-bezier(0.3, 1.45, 0.5, 1) backwards; }
 }
+
+@keyframes entra { from { opacity: 0; transform: translateY(10px); } }
+@keyframes fila { from { opacity: 0; transform: translateY(6px); } }
+@keyframes cosido { from { opacity: 0; transform: scale(0.7) rotate(-14deg); } }
+@keyframes salto { 35% { transform: scale(1.22) rotate(-8deg); } 70% { transform: scale(0.96) rotate(2deg); } }
+@keyframes mas-uno { 0% { opacity: 0; transform: translateY(8px) scale(0.8); } 25% { opacity: 1; transform: translateY(0) scale(1.1); } 100% { opacity: 0; transform: translateY(-22px) scale(1); } }
+@keyframes entra-derecha { from { opacity: 0; transform: translateX(14px); } }
+@keyframes late { 40% { transform: scale(1.12); } }
+@keyframes brinco { from { transform: scale(0.4); } 60% { transform: scale(1.2); } }
+@keyframes flota { 50% { transform: translateY(-3px) rotate(-4deg); } }
+@keyframes crece { from { transform: scaleY(0.05); opacity: 0; } }
+@keyframes llena { from { width: 0; } }
+@keyframes temblor { 20% { transform: translateX(-4px); } 40% { transform: translateX(3.5px); } 60% { transform: translateX(-2.5px); } 80% { transform: translateX(1.2px); } }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation: none !important; }
+}
+
+@keyframes costura { to { stroke-dashoffset: -34; } }

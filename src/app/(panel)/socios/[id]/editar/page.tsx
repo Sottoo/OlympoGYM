@@ -17,7 +17,7 @@ export default async function PaginaEditarSocio({ params }: { params: Promise<{ 
   });
 
   return (
-    <div className="space-y-6">
+    <div className="pagina mx-auto w-full max-w-3xl">
       <Encabezado titulo="Editar datos" volver={{ href: `/socios/${id}`, texto: nombreCompleto(socio) }} />
       <FormularioSocio socio={socio} fotoUrl={fotoUrl} />
     </div>

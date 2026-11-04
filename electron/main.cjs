@@ -2,13 +2,14 @@
  * App de escritorio de Olimpo GYM.
  *
  * Arranca el servidor de Next.js (ya compilado) dentro de la computadora y lo
- * muestra en una ventana propia, sin navegador. Los datos viven en Supabase;
- * los respaldos diarios se guardan en Documentos\Olimpo GYM\Respaldos.
+ * muestra en una ventana propia, sin navegador. Todo vive en la computadora:
+ *   · Datos (base SQLite y fotos): %APPDATA%\Olimpo GYM\datos
+ *   · Respaldos diarios:           Documentos\Olimpo GYM\Respaldos
  *
  *   npm run escritorio       usa la versión compilada (.next/standalone)
  *   npm run escritorio:dev   usa `npm run dev` (http://localhost:3000)
  */
-const { app, BrowserWindow, Menu, dialog, shell, utilityProcess } = require("electron");
+const { app, BrowserWindow, Menu, dialog, ipcMain, shell, utilityProcess } = require("electron");
 const fs = require("node:fs");
 const net = require("node:net");
 const path = require("node:path");
@@ -22,6 +23,9 @@ let servidor = null;
 /** @type {BrowserWindow | null} */
 let ventana = null;
 let saliendo = false;
+/** Puerto del servidor interno: solo las páginas de ese origen pueden usar el puente con Windows. */
+let puertoApp = MODO_DEV ? 3000 : 0;
+const RUTA_RESPALDOS = () => path.join(app.getPath("documents"), NOMBRE, "Respaldos");
 
 if (!app.requestSingleInstanceLock()) {
   // Ya hay una ventana abierta: se enfoca esa en lugar de abrir otra.
@@ -37,12 +41,13 @@ if (!app.requestSingleInstanceLock()) {
 
 async function iniciar() {
   Menu.setApplicationMenu(null);
+  registrarPuente();
   ventana = crearVentana();
   try {
     const url = MODO_DEV ? URL_DEV : await iniciarServidor();
     await ventana.loadURL(url);
   } catch (error) {
-    dialog.showErrorBox(NOMBRE, `No se pudo abrir el sistema.\n\n${error instanceof Error ? error.message : error}`);
+    dialog.showErrorBox(NOMBRE, `No se pudo abrir el programa.\n\n${error instanceof Error ? error.message : error}`);
     app.quit();
   }
 }
@@ -55,9 +60,9 @@ function crearVentana() {
     minHeight: 660,
     show: false,
     title: NOMBRE,
-    backgroundColor: "#0f0f11",
+    backgroundColor: "#161514",
     icon: path.join(__dirname, "icono.png"),
-    webPreferences: { contextIsolation: true, sandbox: true },
+    webPreferences: { contextIsolation: true, sandbox: true, preload: path.join(__dirname, "preload.cjs") },
   });
   nueva.once("ready-to-show", () => {
     nueva.maximize();
@@ -80,9 +85,59 @@ function crearVentana() {
   return nueva;
 }
 
+/**
+ * Funciones de Windows que la interfaz puede pedir (ver preload.cjs): elegir
+ * una carpeta, mostrar un respaldo en el Explorador y abrir WhatsApp.
+ * Solo responden a la página del propio programa y solo aceptan rutas
+ * locales (no de red): archivos .zip y carpetas que existen.
+ */
+function registrarPuente() {
+  ipcMain.handle("olimpo:elegir-carpeta", async (evento) => {
+    if (!delPrograma(evento)) return null;
+    const r = await dialog.showOpenDialog(ventana, {
+      title: "Elige dónde copiar los respaldos (Google Drive, OneDrive o una USB)",
+      properties: ["openDirectory", "createDirectory"],
+    });
+    return r.canceled ? null : r.filePaths[0];
+  });
+  ipcMain.handle("olimpo:mostrar-archivo", (evento, ruta) => {
+    if (!delPrograma(evento) || !rutaLocal(ruta)) return;
+    if (ruta.toLowerCase().endsWith(".zip") && fs.existsSync(ruta)) shell.showItemInFolder(ruta);
+  });
+  ipcMain.handle("olimpo:abrir-carpeta", async (evento, ruta) => {
+    if (!delPrograma(evento) || !rutaLocal(ruta)) return;
+    // Solo la carpeta de respaldos se crea si falta; cualquier otra debe existir ya.
+    if (path.resolve(ruta) === path.resolve(RUTA_RESPALDOS())) fs.mkdirSync(ruta, { recursive: true });
+    if (fs.existsSync(ruta) && fs.statSync(ruta).isDirectory()) await shell.openPath(ruta);
+  });
+  ipcMain.handle("olimpo:abrir-whatsapp", async (evento) => {
+    if (!delPrograma(evento)) return;
+    try {
+      await shell.openExternal("whatsapp://send");
+    } catch {
+      await shell.openExternal("https://web.whatsapp.com/");
+    }
+  });
+}
+
 function esDeLaApp(url) {
-  const { protocol, hostname } = new URL(url);
-  return protocol === "data:" || hostname === "127.0.0.1" || hostname === "localhost";
+  const { protocol, hostname, port } = new URL(url);
+  if (protocol === "data:") return true;
+  return (hostname === "127.0.0.1" || hostname === "localhost") && port === String(puertoApp);
+}
+
+/** La petición viene de la ventana del programa (no de otra página). */
+function delPrograma(evento) {
+  try {
+    return esDeLaApp(evento.senderFrame?.url ?? "") && !evento.senderFrame.url.startsWith("data:");
+  } catch {
+    return false;
+  }
+}
+
+/** Una ruta de esta computadora (no de red ni relativa). */
+function rutaLocal(ruta) {
+  return typeof ruta === "string" && path.isAbsolute(ruta) && !ruta.startsWith("\\\\") && !ruta.startsWith("//") && !ruta.split(/[\\/]/).includes("..");
 }
 
 function abrirFuera(url) {
@@ -100,6 +155,7 @@ async function iniciarServidor() {
   }
 
   const puerto = await puertoLibre();
+  puertoApp = puerto;
   const bitacora = fs.createWriteStream(path.join(app.getPath("userData"), "servidor.log"), { flags: "a" });
   bitacora.write(`\n── ${new Date().toISOString()} · puerto ${puerto}\n`);
 
@@ -112,7 +168,8 @@ async function iniciarServidor() {
       NODE_ENV: "production",
       HOSTNAME: "127.0.0.1",
       PORT: String(puerto),
-      RUTA_RESPALDOS: path.join(app.getPath("documents"), NOMBRE, "Respaldos"),
+      RUTA_DATOS: path.join(app.getPath("userData"), "datos"),
+      RUTA_RESPALDOS: RUTA_RESPALDOS(),
     },
   });
   servidor.stdout?.pipe(bitacora);
@@ -120,7 +177,7 @@ async function iniciarServidor() {
   servidor.on("exit", (codigo) => {
     servidor = null;
     if (saliendo) return;
-    dialog.showErrorBox(NOMBRE, `El sistema se detuvo inesperadamente (código ${codigo}). Vuelve a abrirlo.`);
+    dialog.showErrorBox(NOMBRE, `El programa se detuvo inesperadamente (código ${codigo}). Vuelve a abrirlo.`);
     app.quit();
   });
 
@@ -157,8 +214,8 @@ async function esperarRespuesta(url, limiteMs = 30_000) {
 
 function pantallaDeCarga() {
   const html = `<!doctype html><meta charset="utf-8"><title>${NOMBRE}</title>
-<body style="margin:0;height:100vh;display:grid;place-items:center;background:#0f0f11;color:#fff;font:600 18px system-ui,sans-serif;letter-spacing:.04em">
-<p style="opacity:.7">Abriendo ${NOMBRE}…</p></body>`;
+<body style="margin:0;height:100vh;display:grid;place-items:center;background:#161514;color:#e9e5dc;font:500 15px system-ui,sans-serif;letter-spacing:.04em">
+<p>Abriendo ${NOMBRE}…</p></body>`;
   return `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
 }
 

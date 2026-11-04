@@ -1,86 +1,66 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { entorno, modoDemo, obtenerAcceso } from "@/infrastructure/auth/autenticacion";
-import { casosDeUso } from "@/infrastructure/contenedor";
+import { entorno, obtenerAcceso } from "@/infrastructure/auth/autenticacion";
 import { Icono } from "@/presentation/components/Icono";
-import { Logo } from "@/presentation/components/Logo";
+import { LogoBordado } from "@/presentation/components/Logo";
+import { AtajoMostrador } from "@/presentation/components/AtajoMostrador";
 import { Navegacion } from "@/presentation/components/Navegacion";
+import { DefinicionesDeHilo } from "@/presentation/components/pictogramas/Pictograma";
 import { accionCerrarSesion } from "./acciones";
-import { RespaldoAutomatico } from "./RespaldoAutomatico";
+import { programarRespaldoDiario } from "@/infrastructure/respaldo/respaldo";
+import { PERMISO_DE_SECCION, puede, ROLES } from "@/domain/shared/permisos";
 
+/**
+ * El marco del panel: a la izquierda el riel negro (la playera, con el logo
+ * bordado y una costura en la orilla) y a la derecha la mesa de trabajo.
+ */
 export default async function LayoutPanel({ children }: { children: React.ReactNode }) {
   const acceso = await obtenerAcceso();
   if (acceso.tipo === "sin_sesion") redirect("/login");
 
-  if (acceso.tipo === "sin_permiso") {
-    return (
-      <main className="mx-auto max-w-lg px-6 py-24">
-        <h1 className="titulo mb-3">Tu cuenta aún no tiene acceso</h1>
-        <p className="mb-6 text-gris">
-          Iniciaste sesión como {acceso.email}, pero esa cuenta no está registrada como personal del gimnasio. Pide al
-          administrador que te agregue.
-        </p>
-        <form action={accionCerrarSesion}>
-          <button className="boton-secundario">Cerrar sesión</button>
-        </form>
-      </main>
-    );
-  }
-
   const { personal } = acceso;
-  const avisosPendientes = (await (await casosDeUso()).obtenerAvisosPendientes.ejecutar()).length;
-  const iniciales = personal.nombre
-    .split(" ")
-    .slice(0, 2)
-    .map((p) => p[0])
-    .join("")
-    .toUpperCase();
+  // El respaldo del día se hace por detrás, sin hacer esperar a nadie.
+  programarRespaldoDiario();
+  // El menú no muestra lo que el perfil no puede abrir.
+  const ocultas = Object.entries(PERMISO_DE_SECCION)
+    .filter(([, permiso]) => permiso && !puede(personal.rol, permiso))
+    .map(([ruta]) => ruta);
 
   return (
-    <div className="min-h-screen lg:grid lg:grid-cols-[15.5rem_minmax(0,1fr)]">
-      <aside className="bg-carbon text-white lg:sticky lg:top-0 lg:flex lg:h-screen lg:flex-col">
-        <div className="flex h-14 items-center px-4 lg:h-16 lg:px-5">
-          <Link href="/panel" aria-label={`${entorno.nombreGimnasio}, ir al resumen`}>
-            <Logo nombre={entorno.nombreGimnasio} />
+    <div className="grid min-h-screen grid-cols-[236px_minmax(0,1fr)]">
+      <aside
+        className="sticky top-0 flex h-screen flex-col gap-6 bg-carbon px-[18px] pb-5 pt-6 [@media(max-height:780px)]:gap-3 [@media(max-height:780px)]:pt-4 text-[#f2efe8] after:pointer-events-none after:absolute after:inset-y-2 after:right-[7px] after:border-r-[1.5px] after:border-dashed after:border-white/25"
+        style={{
+          backgroundImage:
+            "repeating-linear-gradient(0deg, rgb(255 255 255 / 0.025) 0 1px, transparent 1px 3px), repeating-linear-gradient(90deg, rgb(255 255 255 / 0.02) 0 1px, transparent 1px 3px)",
+        }}
+      >
+        <Link href="/panel" aria-label={`${entorno.nombreGimnasio}, ir a Hoy`} className="mx-auto block">
+          {/* En ventanas bajitas el logo se achica para que quepa todo el menú. */}
+          <LogoBordado ancho={124} className="h-auto [@media(max-height:780px)]:w-[76px]" />
+        </Link>
+        <div className="-mx-0.5 min-h-0 flex-1 overflow-y-auto pr-1 [scrollbar-width:thin] [scrollbar-color:rgb(255_255_255/0.25)_transparent]">
+          <Navegacion ocultas={ocultas} />
+        </div>
+        <div className="flex items-center gap-2 border-t-[1.5px] border-dashed border-white/20 pt-4">
+          <Link href="/cuenta" className="min-w-0 flex-1 rounded-[8px] text-[0.82rem] leading-snug text-[#f2efe8]/65 hover:text-white" title="Mi cuenta">
+            <b className="block truncate text-[0.9rem] text-white">{personal.nombre.split(" ")[0]}</b>
+            {ROLES[personal.rol].nombre}
           </Link>
-        </div>
-        <div className="overflow-x-auto border-t border-white/[0.07] px-2 py-2 lg:px-3 lg:py-6">
-          <Navegacion avisosPendientes={avisosPendientes} />
-        </div>
-        <div className="mt-auto hidden border-t border-white/[0.07] p-4 lg:block">
-          <div className="flex items-center gap-3">
-            <span className="grid size-9 shrink-0 place-items-center rounded-full bg-carbon-claro text-sm font-semibold text-white/80 ring-1 ring-white/10">
-              {iniciales}
-            </span>
-            <div className="min-w-0 text-sm">
-              <p className="truncate font-semibold">{personal.nombre}</p>
-              <p className="truncate text-white/45">{personal.rol === "administrador" ? "Administrador" : "Recepción"}</p>
-            </div>
-            {!modoDemo && (
-              <form action={accionCerrarSesion} className="ml-auto">
-                <button className="rounded p-1.5 text-white/50 hover:bg-white/[0.06] hover:text-white" title="Cerrar sesión">
-                  <Icono nombre="salir" />
-                  <span className="sr-only">Cerrar sesión</span>
-                </button>
-              </form>
-            )}
-          </div>
+          <form action={accionCerrarSesion}>
+            <button className="grid size-9 place-items-center rounded-[9px] text-[#f2efe8]/60 hover:bg-white/[0.06] hover:text-white" title="Cerrar sesión">
+              <Icono nombre="salir" className="size-[18px]" />
+              <span className="sr-only">Cerrar sesión</span>
+            </button>
+          </form>
         </div>
       </aside>
 
-      <div className="min-w-0">
-        {modoDemo && (
-          <p className="flex items-center gap-2 border-b border-linea bg-superficie px-4 py-2 text-[0.85rem] text-gris sm:px-8">
-            <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-ambar" />
-            <span>
-              <strong className="font-semibold text-tinta">Modo demo.</strong> Datos de ejemplo que se borran al cerrar el
-              programa. Configura Supabase en <code className="text-tinta">.env.local</code> para usar datos reales.
-            </span>
-          </p>
-        )}
-        <main className="mx-auto max-w-[76rem] px-4 py-7 sm:px-8 lg:py-10">{children}</main>
-      </div>
-      <RespaldoAutomatico />
+      <main className="min-w-0 px-9 pb-12 pt-8">
+        <div className="contenido">{children}</div>
+      </main>
+      <AtajoMostrador />
+      <DefinicionesDeHilo />
     </div>
   );
 }

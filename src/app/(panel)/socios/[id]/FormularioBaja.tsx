@@ -4,7 +4,9 @@ import { useActionState, useState } from "react";
 import { MOTIVOS_BAJA } from "@/domain/entities/Socio";
 import { estadoInicial } from "@/presentation/acciones/estadoFormulario";
 import { BotonEnviar } from "@/presentation/components/BotonEnviar";
-import { MensajeError } from "@/presentation/components/Mensajes";
+import { Selector } from "@/presentation/components/formulario/Selector";
+import { LIMITES } from "@/domain/shared/reglas";
+import { Ayuda, Etiqueta, Formulario } from "@/presentation/components/formulario/Formulario";
 import { accionDarDeBaja } from "../acciones";
 
 /**
@@ -25,35 +27,48 @@ export function FormularioBaja({ socioId, nombre, tieneMembresiaVigente }: { soc
   }
 
   return (
-    <form action={accion} className="space-y-4">
+    <Formulario action={accion} estado={estado} className="grid gap-4">
       <input type="hidden" name="socioId" value={socioId} />
-      <MensajeError mensaje={estado.error} />
       <p className="text-[0.95rem]">
-        {nombre} dejará de aparecer en la lista de activos y ya no recibirá avisos. Su historial de pagos se conserva y
+        {nombre} dejará de aparecer en la lista de activos. Su historial de pagos se conserva y
         puedes reactivarlo cuando quieras.
         {tieneMembresiaVigente && <strong className="font-semibold"> Todavía tiene una membresía vigente.</strong>}
       </p>
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid gap-4">
         <div>
-          <label htmlFor="motivo" className="etiqueta">Motivo</label>
-          <select id="motivo" name="motivo" required className="campo" value={motivo} onChange={(e) => setMotivo(e.target.value)}>
-            <option value="" disabled>Elige una opción</option>
-            {MOTIVOS_BAJA.map((m) => (
-              <option key={m} value={m}>{m}</option>
-            ))}
-          </select>
+          <Etiqueta para="motivo">Motivo</Etiqueta>
+          <Selector
+            id="motivo"
+            nombre="motivo"
+            requerido
+            valor={motivo}
+            alCambiar={setMotivo}
+            marcador="Elige uno"
+            opciones={MOTIVOS_BAJA.map((m) => ({ valor: m, texto: m }))}
+          />
         </div>
         <div>
-          <label htmlFor="detalle" className="etiqueta">
-            Detalle {motivo !== "Otro" && <span className="font-normal text-gris">(opcional)</span>}
-          </label>
-          <input id="detalle" name="detalle" className="campo" required={motivo === "Otro"} defaultValue={estado.valores?.detalle} />
+          <Etiqueta para="detalle" opcional={motivo !== "Otro"}>
+            Detalle
+          </Etiqueta>
+          <input
+            id="detalle"
+            name="detalle"
+            className="campo"
+            maxLength={LIMITES.nota}
+            required={motivo === "Otro"}
+            placeholder={motivo === "Otro" ? "Cuéntanos brevemente por qué" : "Ej. se muda a Monterrey en diciembre"}
+            data-regla="texto:3"
+            data-falta="Describe brevemente el motivo."
+            defaultValue={estado.valores?.detalle}
+          />
+          <Ayuda para="detalle">Sirve para saber después por qué se van los socios.</Ayuda>
         </div>
       </div>
       <div className="flex flex-wrap gap-2">
         <BotonEnviar textoEnviando="Dando de baja…">Confirmar baja</BotonEnviar>
         <button type="button" className="boton-secundario" onClick={() => setAbierto(false)}>Cancelar</button>
       </div>
-    </form>
+    </Formulario>
   );
 }

@@ -1,12 +1,11 @@
 import { type MetodoPago, validarNuevoPago } from "@/domain/entities/Pago";
 import { calcularFechaFin } from "@/domain/entities/Plan";
 import type { Suscripcion } from "@/domain/entities/Suscripcion";
-import type { PagoRepository } from "@/domain/repositories/PagoRepository";
 import type { PlanRepository } from "@/domain/repositories/PlanRepository";
 import type { SocioRepository } from "@/domain/repositories/SocioRepository";
 import type { SuscripcionRepository } from "@/domain/repositories/SuscripcionRepository";
 import type { Reloj } from "@/domain/services/Reloj";
-import { ErrorDeDominio, NoEncontrado } from "@/domain/shared/ErrorDeDominio";
+import { ErrorDeDominio, NoEncontrado, SinPermiso } from "@/domain/shared/ErrorDeDominio";
 import { sumarDias } from "@/domain/shared/fechas";
 
 export interface EntradaAsignarPlan {
@@ -30,8 +29,9 @@ export class AsignarPlan {
     private readonly socios: SocioRepository,
     private readonly planes: PlanRepository,
     private readonly suscripciones: SuscripcionRepository,
-    private readonly pagos: PagoRepository,
     private readonly reloj: Reloj,
+    /** Si quien cobra puede poner un monto distinto al precio del plan (descuentos). */
+    private readonly permitirOtroMonto = true,
   ) {}
 
   async ejecutar(entrada: EntradaAsignarPlan): Promise<Suscripcion> {
@@ -43,6 +43,10 @@ export class AsignarPlan {
     if (!plan) throw new NoEncontrado("El plan");
     if (!socio.activo) throw new ErrorDeDominio("Este socio está dado de baja. Reactívalo para asignarle un plan.");
     if (!plan.activo) throw new ErrorDeDominio("Ese plan está desactivado. Elige otro o actívalo en Planes.");
+
+    if (!this.permitirOtroMonto && entrada.monto !== undefined && entrada.monto !== plan.precio) {
+      throw new SinPermiso("cobrar un monto distinto al precio del plan");
+    }
 
     const hoy = this.reloj.hoy();
     const ultima = await this.suscripciones.obtenerUltimaDeSocio(socio.id);
@@ -57,14 +61,8 @@ export class AsignarPlan {
       nota: entrada.nota ?? null,
     });
 
-    const suscripcion = await this.suscripciones.crear({
-      socioId: socio.id,
-      planId: plan.id,
-      fechaInicio,
-      fechaFin: calcularFechaFin(fechaInicio, plan),
-    });
-    await this.pagos.crear({ ...pago, suscripcionId: suscripcion.id });
-
-    return suscripcion;
+    const { socioId, monto, metodo, fecha, nota } = pago;
+    const datosPago = { socioId, monto, metodo, fecha, nota };
+    return this.suscripciones.crearConPago({ socioId: socio.id, planId: plan.id, fechaInicio, fechaFin: calcularFechaFin(fechaInicio, plan) }, datosPago);
   }
 }

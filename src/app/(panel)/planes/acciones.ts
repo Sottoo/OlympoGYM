@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import type { UnidadDuracion } from "@/domain/entities/Plan";
 import { casosDeUso } from "@/infrastructure/contenedor";
-import { type EstadoFormulario, mensajeDeError, texto, valoresDe } from "@/presentation/acciones/estadoFormulario";
+import { type EstadoFormulario, fallo, texto } from "@/presentation/acciones/estadoFormulario";
 
 export async function accionCrearPlan(_: EstadoFormulario, formData: FormData): Promise<EstadoFormulario> {
   try {
@@ -15,10 +15,10 @@ export async function accionCrearPlan(_: EstadoFormulario, formData: FormData): 
       unidad: texto(formData, "unidad") as UnidadDuracion,
     });
   } catch (error) {
-    return { error: mensajeDeError(error), valores: valoresDe(formData) };
+    return fallo(error, formData);
   }
   revalidatePath("/planes");
-  return { valores: {} };
+  return { exito: `Plan «${texto(formData, "nombre").trim()}» creado. Ya se puede asignar a los socios.`, valores: {} };
 }
 
 export async function accionCambiarEstadoPlan(formData: FormData) {

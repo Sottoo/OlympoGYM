@@ -1,6 +1,6 @@
 import type { Pago } from "@/domain/entities/Pago";
 import { cumpleAniosEn, edadEn, type Socio } from "@/domain/entities/Socio";
-import { type SituacionMembresia, type Suscripcion, situacionDeMembresia } from "@/domain/entities/Suscripcion";
+import { type SituacionMembresia, type Suscripcion, situacionDeMembresia, suscripcionVigenteOUltima } from "@/domain/entities/Suscripcion";
 import type { PagoRepository } from "@/domain/repositories/PagoRepository";
 import type { SocioRepository } from "@/domain/repositories/SocioRepository";
 import type { SuscripcionRepository } from "@/domain/repositories/SuscripcionRepository";
@@ -17,6 +17,8 @@ export interface DetalleSocio {
   cumpleHoy: boolean;
   membresia: SituacionMembresia;
   planActual: string | null;
+  /** Hoy solo pagó la visita del día (no tiene membresía). */
+  deVisita: boolean;
   suscripciones: Suscripcion[];
   pagos: Pago[];
 }
@@ -39,8 +41,8 @@ export class ObtenerDetalleSocio {
       this.pagos.listarPorSocio(socioId),
       socio.foto ? this.fotos.urlTemporal(socio.foto) : null,
     ]);
-    const ultima = suscripciones[0] ?? null; // vienen ordenadas por fecha de fin, de la más reciente
     const hoy = this.reloj.hoy();
+    const ultima = suscripcionVigenteOUltima(suscripciones, hoy); // vienen ordenadas por fecha de fin, de la más reciente
 
     return {
       socio,
@@ -49,6 +51,7 @@ export class ObtenerDetalleSocio {
       cumpleHoy: socio.fechaNacimiento ? cumpleAniosEn(socio.fechaNacimiento, hoy) : false,
       membresia: situacionDeMembresia(ultima, hoy),
       planActual: ultima?.planNombre ?? null,
+      deVisita: ultima?.esVisita ?? false,
       suscripciones,
       pagos,
     };
