@@ -1,6 +1,6 @@
 import { ErrorDeDominio } from "../shared/ErrorDeDominio";
 import { LIMITES, revisarDinero } from "../shared/reglas";
-import type { FechaISO } from "../shared/fechas";
+import { esFechaValida, type FechaISO, sumarDias } from "../shared/fechas";
 
 /** El gimnasio cobra en efectivo o por transferencia (no hay terminal de tarjeta). */
 export type MetodoPago = "efectivo" | "transferencia";
@@ -32,6 +32,23 @@ export type DatosNuevoPago = Omit<Pago, "id" | "creadoEn">;
 export interface PagoDelDia extends Pago {
   socioNombre: string;
   planNombre: string | null;
+}
+
+/** Hasta cuántos días atrás se puede registrar un cobro que se olvidó anotar. */
+export const DIAS_PARA_COBRO_ATRASADO = 31;
+
+/**
+ * Fecha de un cobro: hoy, o un día anterior si se olvidó registrarlo. Nunca
+ * en el futuro ni más atrás de 31 días (un mes completo para corregir).
+ */
+export function revisarFechaDeCobro(fecha: FechaISO | undefined | null, hoy: FechaISO): FechaISO {
+  if (!fecha || fecha === hoy) return hoy;
+  if (!esFechaValida(fecha)) throw new ErrorDeDominio("La fecha del cobro no es válida.", "fecha");
+  if (fecha > hoy) throw new ErrorDeDominio("La fecha del cobro no puede ser en el futuro.", "fecha");
+  if (fecha < sumarDias(hoy, -DIAS_PARA_COBRO_ATRASADO)) {
+    throw new ErrorDeDominio(`Solo se pueden registrar cobros de hasta ${DIAS_PARA_COBRO_ATRASADO} días atrás.`, "fecha");
+  }
+  return fecha;
 }
 
 export function validarNuevoPago(datos: DatosNuevoPago): DatosNuevoPago {

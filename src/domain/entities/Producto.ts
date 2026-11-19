@@ -105,9 +105,14 @@ export function costoPorUnidad(p: Pick<Producto, "unidad" | "costo" | "envaseGra
   return p.envaseGramos ? p.costo / p.envaseGramos : null;
 }
 
-/** Importe de vender `cantidad` (piezas o gramos), redondeado a centavos. */
+/**
+ * Importe de vender `cantidad` (piezas o gramos), redondeado a centavos. Se
+ * calcula en centavos enteros (precio de la porción × gramos ÷ gramos de la
+ * porción) para que la pantalla de cobro y la venta guardada den lo mismo.
+ */
 export function importeDe(p: Pick<Producto, "unidad" | "precioVenta" | "porcionGramos">, cantidad: number): number {
-  return Math.round(cantidad * precioPorUnidad(p) * 100) / 100;
+  const centavos = Math.round(p.precioVenta * 100) * cantidad;
+  return Math.round(esGranel(p) && p.porcionGramos ? centavos / p.porcionGramos : centavos) / 100;
 }
 
 const miles = (n: number) => Math.round(n).toLocaleString("es-MX");

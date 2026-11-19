@@ -1,9 +1,12 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { entorno, obtenerAcceso } from "@/infrastructure/auth/autenticacion";
+import { entorno, obtenerAcceso, permisosExtraDeRecepcion } from "@/infrastructure/auth/autenticacion";
 import { Icono } from "@/presentation/components/Icono";
 import { LogoBordado } from "@/presentation/components/Logo";
 import { AtajoMostrador } from "@/presentation/components/AtajoMostrador";
+import { AvisoDeActualizacion } from "@/presentation/components/AvisoDeActualizacion";
+import { CerrarVentanasAlNavegar } from "@/presentation/components/CerrarVentanasAlNavegar";
+import { Suspense } from "react";
 import { Navegacion } from "@/presentation/components/Navegacion";
 import { DefinicionesDeHilo } from "@/presentation/components/pictogramas/Pictograma";
 import { accionCerrarSesion } from "./acciones";
@@ -23,7 +26,7 @@ export default async function LayoutPanel({ children }: { children: React.ReactN
   programarRespaldoDiario();
   // El menú no muestra lo que el perfil no puede abrir.
   const ocultas = Object.entries(PERMISO_DE_SECCION)
-    .filter(([, permiso]) => permiso && !puede(personal.rol, permiso))
+    .filter(([, permiso]) => permiso && !puede(personal.rol, permiso, permisosExtraDeRecepcion()))
     .map(([ruta]) => ruta);
 
   return (
@@ -42,6 +45,7 @@ export default async function LayoutPanel({ children }: { children: React.ReactN
         <div className="-mx-0.5 min-h-0 flex-1 overflow-y-auto pr-1 [scrollbar-width:thin] [scrollbar-color:rgb(255_255_255/0.25)_transparent]">
           <Navegacion ocultas={ocultas} />
         </div>
+        <AvisoDeActualizacion />
         <div className="flex items-center gap-2 border-t-[1.5px] border-dashed border-white/20 pt-4">
           <Link href="/cuenta" className="min-w-0 flex-1 rounded-[8px] text-[0.82rem] leading-snug text-[#f2efe8]/65 hover:text-white" title="Mi cuenta">
             <b className="block truncate text-[0.9rem] text-white">{personal.nombre.split(" ")[0]}</b>
@@ -58,6 +62,9 @@ export default async function LayoutPanel({ children }: { children: React.ReactN
 
       <main className="min-w-0 px-9 pb-12 pt-8">
         <div className="contenido">{children}</div>
+        <Suspense>
+          <CerrarVentanasAlNavegar />
+        </Suspense>
       </main>
       <AtajoMostrador />
       <DefinicionesDeHilo />

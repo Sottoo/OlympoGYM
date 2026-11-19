@@ -15,6 +15,10 @@ export interface ProductoRepository {
   cambiarFoto(id: string, ruta: string | null): Promise<void>;
   /** Si ya se vendió alguna vez (entonces no se puede eliminar sin perder historial). */
   tieneVentas(id: string): Promise<boolean>;
-  /** Borra el producto y sus movimientos. Solo para altas por error, sin ventas. */
-  eliminar(id: string): Promise<void>;
+  /**
+   * Borrado definitivo. Sin ventas, se borra con sus movimientos. Con ventas,
+   * deja de existir en todas las pantallas y libera su código, pero sus
+   * ventas siguen en los cortes con su nombre.
+   */
+  eliminar(id: string): Promise<"completo" | "anonimo">;
 }

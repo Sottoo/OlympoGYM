@@ -107,7 +107,7 @@ export function AltaRapida({ catalogo, yaHay }: { catalogo: EquipoDeCatalogo[]; 
         <section className="panel grid gap-4 px-6 py-[22px] xl:sticky xl:top-6">
           <div>
             <h2 className="font-titulos text-[1.3rem] leading-tight">Para dar de alta</h2>
-            <p className="mt-1 text-[0.84rem] text-gris">{total === 0 ? "Marca las máquinas que tienes." : `${total} ${total === 1 ? "equipo" : "equipos"}.`}</p>
+            <p className="mt-1 text-[0.84rem] text-gris">{total === 0 ? "Marca las máquinas que tienes." : `${total} ${total === 1 ? "máquina" : "máquinas"}.`}</p>
           </div>
           {lote.length > 0 && (
             <ul className="grid gap-1 text-[0.86rem]">
@@ -125,7 +125,7 @@ export function AltaRapida({ catalogo, yaHay }: { catalogo: EquipoDeCatalogo[]; 
           <p className="text-[0.8rem] text-gris">El primer preventivo se cuenta desde hoy. Si alguna tuvo servicio hace poco, ajústalo en su ficha.</p>
           <AvisosDelFormulario />
           <BotonEnviar textoEnviando="Dando de alta…" className="w-full py-3" disabled={total === 0}>
-            Dar de alta {total > 0 ? total : ""}
+            Agregar {total > 0 ? total : ""}
           </BotonEnviar>
         </section>
       </aside>

@@ -95,6 +95,8 @@ export function FormularioMovimiento({ productoId, stockActual, granel }: { prod
   return (
     <Formulario ref={formulario} action={accion} estado={estado} reglas={reglas} className="grid gap-4">
       <input type="hidden" name="productoId" value={productoId} />
+      {/* La existencia que se ve: un ajuste se mide contra ella, no contra la del momento de guardar. */}
+      <input type="hidden" name="esperado" value={stockActual} />
       <MensajeExito mensaje={estado.exito} />
 
       <fieldset>

@@ -1,16 +1,10 @@
 import { exigirPermiso } from "@/infrastructure/auth/autenticacion";
 import type { Metadata } from "next";
+import Link from "next/link";
 import { casosDeUso } from "@/infrastructure/contenedor";
 import { Encabezado } from "@/presentation/components/Encabezado";
-import {
-  AltasYBajas,
-  AsistenciaDiaria,
-  BarrasHorizontales,
-  formatos,
-  IngresosPorMes,
-  MapaHorasPico,
-  VerDatos,
-} from "@/presentation/components/graficas/Graficas";
+import { AltasYBajas, BarrasHorizontales, formatos, VerDatos } from "@/presentation/components/graficas/Graficas";
+import { GraficaEntradas, IngresosPorMes, MapaHorasPico } from "@/presentation/components/graficas/Interactivas";
 import { compararCon, Marcador } from "@/presentation/components/Marcador";
 import { formatearDinero, plural } from "@/shared/formato";
 
@@ -21,7 +15,8 @@ const DIAS = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "
 
 export default async function PaginaMetricas() {
   await exigirPermiso("metricas.ver");
-  const m = await (await casosDeUso()).obtenerMetricas.ejecutar();
+  const casos = await casosDeUso();
+  const [m, rachas] = await Promise.all([casos.obtenerMetricas.ejecutar(), casos.obtenerRachas.ejecutar(5)]);
   const { asistencia, horasPico, ingresos, socios, productos, equiposMasCostosos } = m;
   const hayGastos = ingresos.some((i) => i.mantenimiento > 0);
 
@@ -30,6 +25,8 @@ export default async function PaginaMetricas() {
   const mesPasado = ingresos[ingresos.length - 2];
   const ingresoMes = esteMes.membresias + esteMes.tienda;
   const ingresoPasado = mesPasado ? mesPasado.membresias + mesPasado.tienda : 0;
+  // El mes en curso va a medias: se compara con el mes pasado hasta el mismo día, no con el mes completo.
+  const ingresoPasadoALaFecha = m.ingresosMesPasadoALaFecha;
 
   const porDiaDeSemana = horasPico.map((fila) => fila.reduce((t, n) => t + n, 0));
   // La franja más concurrida de la semana, para decirla en palabras.
@@ -38,7 +35,7 @@ export default async function PaginaMetricas() {
 
   return (
     <div className="pagina">
-      <Encabezado icono="metricas" titulo="Métricas" descripcion="Cómo va el gimnasio: entradas, socios, ingresos y tienda." />
+      <Encabezado guia="metricas" icono="metricas" titulo="Métricas" descripcion="Cómo va el gimnasio: entradas, socios, ingresos y tienda." />
 
       <Marcador
         cifras={[
@@ -69,7 +66,10 @@ export default async function PaginaMetricas() {
           {
             etiqueta: "Ingresos del mes", icono: "ventas",
             valor: formatearDinero(ingresoMes),
-            comparacion: ingresoPasado > 0 ? { ...compararCon(ingresoMes, ingresoPasado, { porcentaje: true }), contra: "vs. el mes pasado" } : undefined,
+            comparacion:
+              ingresoPasadoALaFecha > 0
+                ? compararCon(ingresoMes, ingresoPasadoALaFecha, { porcentaje: true, contra: "vs. el mismo periodo del mes pasado" })
+                : undefined,
             barras: { valores: ingresos.map((i) => i.membresias + i.tienda), resaltar: ingresos.length - 1, titulo: "Ingresos por mes, últimos 6 meses" },
             detalle:
               esteMes.mantenimiento > 0
@@ -82,9 +82,12 @@ export default async function PaginaMetricas() {
       <section aria-labelledby="t-asistencia" className="superficie grid gap-5 px-6 py-[22px]">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h2 id="t-asistencia" className="subtitulo">Entradas por día</h2>
-          <p className="text-[0.84rem] text-gris">Últimos 30 días</p>
+          <p className="flex items-center gap-2 text-[0.84rem] text-gris">
+            <span aria-hidden className="inline-block h-3 w-4 rounded-[3px] bg-hundido shadow-[inset_0_0_0_1px_var(--color-linea)]" />
+            Fin de semana · últimos 30 días
+          </p>
         </div>
-        <AsistenciaDiaria dias={asistencia.dias} />
+        <GraficaEntradas dias={asistencia.dias} promedio={asistencia.promedioDiario} />
         <VerDatos encabezados={["Día", "Entradas"]} filas={asistencia.dias.map((d) => [formatos.fechaCorta(d.fecha), d.entradas])} />
       </section>
 
@@ -93,7 +96,7 @@ export default async function PaginaMetricas() {
           <h2 id="t-horas" className="subtitulo">Horas pico</h2>
           <p className="text-[0.84rem] text-gris">
             {pico.entradas > 0
-              ? `Lo más concurrido: los ${DIAS[pico.dia]} a las ${pico.hora}:00 · últimas 8 semanas`
+              ? `Lo más concurrido: los ${DIAS[pico.dia].replace(/o$/, "os")} a las ${pico.hora}:00 · últimas 8 semanas`
               : "Últimas 8 semanas"}
           </p>
         </div>
@@ -125,6 +128,35 @@ export default async function PaginaMetricas() {
           />
         </section>
       </div>
+
+      {rachas.length > 0 && (
+        <section aria-labelledby="t-rachas" className="superficie grid content-start gap-4 px-6 py-[22px]">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h2 id="t-rachas" className="subtitulo">Rachas más largas</h2>
+            <p className="text-[0.84rem] text-gris">Días seguidos viniendo</p>
+          </div>
+          <ol className="grid gap-x-8 md:grid-cols-2">
+            {rachas.map((x) => (
+              <li key={x.socioId} className="border-b border-dashed border-linea py-2.5">
+                <div className="flex items-baseline justify-between gap-3">
+                  <Link href={`/socios/${x.socioId}`} className="enlace min-w-0 truncate font-medium">
+                    {x.nombre}
+                  </Link>
+                  <span className="shrink-0 text-[0.8rem] text-gris">
+                    <b className="cifra mr-1 text-[1.25rem] text-tinta">{x.dias}</b>
+                    {x.dias === 1 ? "día" : "días"}
+                  </span>
+                </div>
+                {/* Un punto de cruz por cada día seguido, como se marca a mano. */}
+                <p aria-hidden className="mt-0.5 truncate font-bold leading-none tracking-[0.18em] text-hilo/80">
+                  {"×".repeat(Math.min(x.dias, 21))}
+                  {x.dias > 21 && <span className="text-[0.7rem] tracking-normal text-gris"> +{x.dias - 21}</span>}
+                </p>
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
 
       {(hayGastos || equiposMasCostosos.length > 0) && (
         <section aria-labelledby="t-gastos" className="superficie grid gap-6 px-6 py-[22px] lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
@@ -180,6 +212,7 @@ export default async function PaginaMetricas() {
             <p className="text-gris">Todavía no hay ventas en los últimos 30 días.</p>
           ) : (
             <BarrasHorizontales
+              color="var(--color-dato-mostaza)"
               filas={productos.masVendidos.map((p) => ({
                 nombre: p.nombre,
                 valor: p.importe,

@@ -8,7 +8,7 @@ import { casosDeUso } from "@/infrastructure/contenedor";
 import { Encabezado } from "@/presentation/components/Encabezado";
 import { FormularioEquipo } from "../../FormularioEquipo";
 
-export const metadata: Metadata = { title: "Editar equipo" };
+export const metadata: Metadata = { title: "Editar máquina" };
 export const dynamic = "force-dynamic";
 
 export default async function PaginaEditarEquipo({ params }: { params: Promise<{ id: string }> }) {

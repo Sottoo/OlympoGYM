@@ -14,6 +14,11 @@ export interface SuscripcionRepository {
   obtenerPorId(id: string): Promise<Suscripcion | null>;
   /** Guarda la membresía y su pago juntos: o quedan los dos o ninguno. */
   crearConPago(datos: DatosNuevaSuscripcion, pago: Omit<DatosNuevoPago, "suscripcionId">): Promise<Suscripcion>;
+  /**
+   * Corrige una membresía registrada con el plan equivocado: cambia su plan y
+   * su vencimiento, y el monto y método de su pago, todo junto.
+   */
+  corregir(id: string, cambio: { planId: string; fechaFin: string }, pago: { monto: number; metodo: string }): Promise<Suscripcion>;
   /** Anula una visita cobrada por error: borra la suscripción, su pago y (si se indica) la entrada, juntos. */
   anularConSuPago(id: string, asistenciaId?: string): Promise<void>;
 }

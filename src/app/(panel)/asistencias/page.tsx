@@ -45,7 +45,7 @@ export default async function PaginaAsistencias({ searchParams }: { searchParams
 
   return (
     <div className="pagina">
-      <Encabezado icono="entradas"
+      <Encabezado guia="entradas" icono="entradas"
         titulo="Entradas"
         descripcion="Quién entró cada día y a qué hora."
         acciones={

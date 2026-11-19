@@ -14,7 +14,14 @@ import { ARCHIVO_BASE, rutaFotos } from "../sqlite/rutas";
  */
 
 export const PREFIJO = "respaldo-olimpo-";
-export const PATRON = /^respaldo-olimpo-\d{4}-\d{2}-\d{2}(-\d{4}-(manual|antes-de-restaurar|antes-de-actualizar))?\.zip$/;
+/**
+ * Nombres válidos: el diario (`respaldo-olimpo-2026-11-18.zip`) y los demás
+ * con hora (`…-2026-11-18-093015-manual.zip`; si ya existe uno en ese mismo
+ * segundo, `…-093015-2-manual.zip`). Los de versiones anteriores llevaban
+ * solo hora y minuto (`…-0930-manual.zip`) y se siguen reconociendo.
+ */
+export const PATRON = /^respaldo-olimpo-\d{4}-\d{2}-\d{2}(-\d{4}(\d{2})?(-\d+)?-(manual|antes-de-restaurar|antes-de-actualizar))?\.zip$/;
+const PARTES = /^respaldo-olimpo-(\d{4}-\d{2}-\d{2})(?:-(\d{4})(\d{2})?(?:-(\d+))?-)?/;
 const CONSERVAR_DIARIOS = 30;
 const CONSERVAR_OTROS = 20;
 
@@ -53,13 +60,38 @@ export function contenidoDelRespaldo(db: DatabaseSync): Zippable {
   }
 }
 
-export function nombreDeRespaldo(tipo: TipoRespaldo): string {
+/**
+ * Nombre del archivo de un respaldo. El diario es uno por día (se refresca
+ * encima). Los demás llevan hora, minuto y segundo, y nunca pisan uno que ya
+ * exista en las carpetas indicadas: si el nombre está tomado se agrega -2,
+ * -3… (así dos restauraciones seguidas conservan cada una su copia previa).
+ */
+export function nombreDeRespaldo(tipo: TipoRespaldo, carpetas: string[] = [entorno.rutaRespaldos]): string {
   const fecha = hoyEn(entorno.zonaHoraria);
   if (tipo === "diario") return `${PREFIJO}${fecha}.zip`;
-  const hora = new Intl.DateTimeFormat("en-GB", { timeZone: entorno.zonaHoraria, hour: "2-digit", minute: "2-digit", hourCycle: "h23" })
+  const hora = new Intl.DateTimeFormat("en-GB", {
+    timeZone: entorno.zonaHoraria,
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  })
     .format(new Date())
-    .replace(":", "");
-  return `${PREFIJO}${fecha}-${hora}-${tipo}.zip`;
+    .replace(/:/g, "");
+  const tomado = (nombre: string) => carpetas.some((c) => existsSync(path.join(c, nombre)));
+  let nombre = `${PREFIJO}${fecha}-${hora}-${tipo}.zip`;
+  for (let n = 2; tomado(nombre); n++) nombre = `${PREFIJO}${fecha}-${hora}-${n}-${tipo}.zip`;
+  return nombre;
+}
+
+/**
+ * Para ordenar del más viejo al más nuevo sin importar el formato del nombre:
+ * fecha, hora con segundos (los nombres viejos sin segundos cuentan como :00)
+ * y el número de repetición (-2, -3…).
+ */
+function claveDeOrden(nombre: string): string {
+  const [, fecha = "", hhmm = "", ss = "00", repeticion = "1"] = PARTES.exec(nombre) ?? [];
+  return `${fecha} ${hhmm}${ss} ${repeticion.padStart(6, "0")}`;
 }
 
 export function escribirSeguro(destino: string, datos: Uint8Array) {
@@ -70,7 +102,11 @@ export function escribirSeguro(destino: string, datos: Uint8Array) {
 }
 
 export function depurar(carpeta: string) {
-  const respaldos = readdirSync(carpeta).filter((a) => PATRON.test(a)).sort();
+  const respaldos = readdirSync(carpeta)
+    .filter((a) => PATRON.test(a))
+    .map((nombre) => ({ nombre, clave: `${claveDeOrden(nombre)} ${nombre}` }))
+    .sort((a, b) => (a.clave < b.clave ? -1 : a.clave > b.clave ? 1 : 0))
+    .map((r) => r.nombre);
   const diarios = respaldos.filter((a) => /^respaldo-olimpo-\d{4}-\d{2}-\d{2}\.zip$/.test(a));
   const otros = respaldos.filter((a) => !diarios.includes(a));
   for (const viejo of [...diarios.slice(0, -CONSERVAR_DIARIOS), ...otros.slice(0, -CONSERVAR_OTROS)]) rmSync(path.join(carpeta, viejo), { force: true });

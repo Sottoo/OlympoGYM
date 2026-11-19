@@ -13,6 +13,8 @@ import { HuecoDeSello, Sello } from "@/presentation/components/Sello";
 import { Avatar } from "@/presentation/components/Avatar";
 import { Icono, type NombreIcono } from "@/presentation/components/Icono";
 import { EstadoMembresia } from "@/presentation/components/Insignia";
+import { type EstadoLector, TEXTO_ESTADO_LECTOR, useLectorDeHuellas } from "@/presentation/components/huellas/lectorDeHuellas";
+import { AyudaLector } from "@/presentation/components/huellas/AyudaLector";
 import { describirDiasRestantes, fechaLocal, formatearDinero, formatearFecha, formatearHora, plural } from "@/shared/formato";
 import { accionCobrarVisita, accionDeshacerEntrada, accionRegistrarEntrada } from "./acciones";
 
@@ -22,6 +24,8 @@ interface Registro {
   registradaEn: string;
   /** Número de visita que acaba de cumplir (contando la de hoy). */
   visita: number;
+  /** Ya había entrado hoy: la visita es la misma y no se vuelve a festejar. */
+  repetida: boolean;
   cumpleHoy: boolean;
   /** Si se le cobró la visita del día, cuánto y cuál (para anularla al deshacer). */
   cobrado?: number;
@@ -42,6 +46,8 @@ export interface Ultimo {
  * siempre caiga en su lugar; Enter registra al socio que se está mostrando.
  * Funciona igual con teclado que con lector: el lector "teclea" el número
  * de la credencial y presiona Enter, y si el socio puede pasar se registra solo.
+ * Con la huella pasa lo mismo: el socio pone el dedo en el lector y, si puede
+ * pasar, su entrada se registra sola; si no, aparece su ficha para decidir.
  * Al elegir a un socio aparece su credencial y, a un lado, si puede pasar.
  */
 export function Mostrador({
@@ -68,6 +74,23 @@ export function Mostrador({
   const [consultando, setConsultando] = useState(false);
   const trabajando = guardando || consultando;
   const busquedaEnCurso = useRef<AbortController | null>(null);
+  const identificando = useRef(false);
+
+  // Lector de huellas: quien pone el dedo se identifica igual que con la credencial escaneada.
+  const { estado: lector, reconectar: reconectarLector } = useLectorDeHuellas(async (imagen) => {
+    if (identificando.current || guardando) return;
+    identificando.current = true;
+    setError(null);
+    setConsultando(true);
+    const r = await enviar<{ socioId: string }>("/api/huellas/identificar", { imagen });
+    setConsultando(false);
+    identificando.current = false;
+    if (!r.ok) return setError(r.error);
+    setTexto("");
+    abrirFicha(r.valor.socioId, true);
+  }, true, (texto) => {
+    if (!identificando.current) setError(texto);
+  });
 
   // Búsqueda mientras se escribe: una pausa corta y, si se sigue escribiendo,
   // la consulta anterior se cancela. Va por GET, así nunca bloquea los botones.
@@ -85,6 +108,8 @@ export function Mostrador({
       if (control.signal.aborted) return;
       setCandidatos(r.ok ? r.valor : []);
       setResaltado(0);
+      // Si la búsqueda falló, se dice (antes se quedaba en blanco y parecía que no buscaba).
+      if (!r.ok && r.error) setError(r.error);
     }, 120);
     return () => {
       clearTimeout(espera);
@@ -136,7 +161,9 @@ export function Mostrador({
       id: entrada.id,
       nombre: f.nombre,
       registradaEn: entrada.registradaEn,
-      visita: f.visitas + 1,
+      // Si ya había entrado hoy, este día ya está contado: es la misma visita.
+      visita: f.vinoHoy ? f.visitas : f.visitas + 1,
+      repetida: f.vinoHoy,
       cumpleHoy: f.cumpleHoy,
       cobrado: entrada.cobrado,
       visitaId: entrada.visitaId,
@@ -213,7 +240,10 @@ export function Mostrador({
     <section aria-labelledby="titulo-mostrador" className="panel px-6 py-[22px]">
       <div className="flex items-center justify-between gap-3">
         <h2 id="titulo-mostrador" className="rotulo">Mostrador</h2>
-        <EtiquetaDeMarca gimnasio={gimnasio} />
+        <div className="flex items-center gap-4">
+          <EstadoDelLector estado={lector} reconectar={reconectarLector} />
+          <EtiquetaDeMarca gimnasio={gimnasio} />
+        </div>
       </div>
 
       <div className="relative z-20">
@@ -284,6 +314,8 @@ export function Mostrador({
         </p>
       )}
 
+      {!ficha && !registro && <AyudaLector estado={lector} reconectar={reconectarLector} className="mt-4" />}
+
       {ficha ? (
         <FichaMostrador
           key={ficha.socio.id}
@@ -308,7 +340,7 @@ export function Mostrador({
               <p className="mt-1.5 text-tinta-suave">
                 {registro.cumpleHoy
                   ? `Hoy es su cumpleaños. Visita número ${registro.visita}.`
-                  : esHito(registro.visita)
+                  : esHito(registro.visita) && !registro.repetida
                     ? `¡Visita número ${registro.visita}! Una visita redonda.`
                     : `Visita número ${registro.visita}.`}
               </p>
@@ -348,7 +380,9 @@ export function Mostrador({
             </div>
           ) : (
             <div>
-              <p className="font-titulos text-[1.9rem] leading-tight">Escribe un nombre o pasa la credencial.</p>
+              <p className="font-titulos text-[1.9rem] leading-tight">
+                {lector === "listo" ? "Pon el dedo en el lector o escribe un nombre." : "Escribe un nombre."}
+              </p>
               <p className="mt-2 text-tinta-suave">
                 {ultimo ? (
                   <>
@@ -389,11 +423,57 @@ type Resultado<T> = { ok: true; valor: T } | { ok: false; error: string };
 async function consultar<T>(url: string, senal?: AbortSignal): Promise<Resultado<T>> {
   try {
     const respuesta = await fetch(url, { signal: senal, cache: "no-store" });
+    // La sesión venció (dura 12 horas): se lleva a iniciar sesión en vez de dejar de buscar en silencio.
+    if (respuesta.status === 401) {
+      window.location.assign("/login");
+      return { ok: false, error: "Tu sesión terminó. Vuelve a entrar." };
+    }
     const datos = await respuesta.json();
     return respuesta.ok ? { ok: true, valor: datos as T } : { ok: false, error: datos?.error ?? "No se pudo consultar." };
   } catch {
     return { ok: false, error: senal?.aborted ? "" : "No hubo respuesta del programa. Intenta de nuevo." };
   }
+}
+
+/** Consulta POST al propio programa (para mandar la imagen de la huella). */
+async function enviar<T>(url: string, cuerpo: unknown): Promise<Resultado<T>> {
+  try {
+    // Con tiempo límite: si el servidor no contestara, el lector no se queda "ocupado" para siempre.
+    const respuesta = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(cuerpo),
+      cache: "no-store",
+      signal: AbortSignal.timeout(20_000),
+    });
+    if (respuesta.status === 401) {
+      window.location.assign("/login");
+      return { ok: false, error: "Tu sesión terminó. Vuelve a entrar." };
+    }
+    const datos = await respuesta.json();
+    return respuesta.ok ? { ok: true, valor: datos as T } : { ok: false, error: datos?.error ?? "No se pudo consultar." };
+  } catch {
+    return { ok: false, error: "No hubo respuesta del programa. Intenta de nuevo." };
+  }
+}
+
+/** Si el lector de huellas está listo para recibir un dedo. */
+function EstadoDelLector({ estado, reconectar }: { estado: EstadoLector; reconectar: () => void }) {
+  const listo = estado === "listo";
+  return (
+    <span className="hidden items-center gap-2.5 sm:inline-flex">
+      <span role="status" className={`inline-flex items-center gap-1.5 text-[0.74rem] font-semibold ${listo ? "text-verde" : "text-gris"}`}>
+        <span aria-hidden className={`size-2 rounded-full ${listo ? "bg-verde" : "bg-linea-fuerte"}`} />
+        {TEXTO_ESTADO_LECTOR[estado]}
+      </span>
+      {/* Salida rápida para recepción si el lector está encendido pero no responde. */}
+      {(listo || estado === "sin_lector") && (
+        <button type="button" onClick={reconectar} className="enlace text-[0.72rem]" title="Si pones el dedo y no pasa nada, reinicia la conexión con el lector">
+          ¿No responde? Reiniciar
+        </button>
+      )}
+    </span>
+  );
 }
 
 const buscar = (texto: string, senal?: AbortSignal) => consultar<Candidato[]>(`/api/mostrador/buscar?q=${encodeURIComponent(texto)}`, senal);
@@ -424,8 +504,9 @@ function FichaMostrador({
   const [metodo, setMetodo] = useState<MetodoPago>("efectivo");
   const v = describirVeredicto(ficha, zonaHoraria);
   // Un día especial se nota en el parche: cumpleaños o una visita redonda (la de hoy).
-  const visitaDeHoy = veredicto.tipo === "puede_pasar" ? ficha.visitas + 1 : ficha.visitas;
-  const liston = ficha.cumpleHoy ? "Feliz cumpleaños" : veredicto.tipo === "puede_pasar" && esHito(visitaDeHoy) ? `Visita Nº ${visitaDeHoy}` : null;
+  // Si regresa el mismo día, hoy ya está contado: no se suma otra ni se vuelve a festejar.
+  const visitaDeHoy = veredicto.tipo === "puede_pasar" && !ficha.vinoHoy ? ficha.visitas + 1 : ficha.visitas;
+  const liston = ficha.cumpleHoy ? "Feliz cumpleaños" : veredicto.tipo === "puede_pasar" && !ficha.vinoHoy && esHito(visitaDeHoy) ? `Visita Nº ${visitaDeHoy}` : null;
   const diaDeHoy = Number(new Intl.DateTimeFormat("en-CA", { timeZone: zonaHoraria, day: "numeric" }).format(new Date()));
   const diasDelMes = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
 
@@ -529,7 +610,7 @@ function FichaMostrador({
       </div>
 
       <div className="mt-7 grid grid-cols-[auto_1fr] items-center gap-x-6 gap-y-2.5 border-t-[1.5px] border-dashed border-linea pt-5">
-        <span className="rotulo">Parches de {nombreDelMes()}</span>
+        <span className="rotulo">Entrenamientos de {nombreDelMes()}</span>
         <p className="justify-self-end text-[0.88rem] text-tinta-suave">
           {ficha.racha > 1 ? (
             <>

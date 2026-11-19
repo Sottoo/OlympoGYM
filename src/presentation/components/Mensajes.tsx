@@ -17,7 +17,7 @@ export function MensajeError({ mensaje, titulo = "No se pudo guardar." }: { mens
 export function MensajeExito({ mensaje }: { mensaje?: string }) {
   if (!mensaje) return null;
   return (
-    <p key={mensaje} role="status" className="aparece flex items-start gap-2.5 rounded-[10px] bg-verde-tenue px-4 py-3 text-[0.92rem] text-tinta outline-1 -outline-offset-4 outline-dashed outline-verde/35">
+    <p key={mensaje} role="status" data-exito="" className="aparece flex items-start gap-2.5 rounded-[10px] bg-verde-tenue px-4 py-3 text-[0.92rem] text-tinta outline-1 -outline-offset-4 outline-dashed outline-verde/35">
       {/* La palomita llega como un sello que se estampa. */}
       <span aria-hidden className="sello-nuevo mt-px grid size-[19px] shrink-0 place-items-center rounded-full bg-verde text-white shadow-[0_0_0_2px_rgb(255_255_255/0.7)]">
         <Icono nombre="check" className="size-3" />

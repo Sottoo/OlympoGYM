@@ -43,7 +43,7 @@ export default async function PaginaBitacora({ searchParams }: Props) {
 
   return (
     <div className="pagina">
-      <Encabezado icono="bitacora"
+      <Encabezado guia="bitacora" icono="bitacora"
         titulo="Bitácora"
         descripcion="Cada cambio, quién lo hizo y cuándo. No se puede editar ni borrar."
       />
@@ -54,7 +54,7 @@ export default async function PaginaBitacora({ searchParams }: Props) {
           opciones={[
             { href: url({ area: null, pagina: 1 }), texto: "Todo", activa: !r.tabla },
             ...Object.entries(TABLAS_BITACORA)
-              .filter(([clave]) => !["suscripciones", "productos", "equipos", "abonos_mantenimiento", "reportes_falla"].includes(clave))
+              .filter(([clave]) => !["suscripciones", "productos", "equipos", "abonos_mantenimiento", "reportes_falla", "huellas"].includes(clave))
               .map(([clave, texto]) => ({ href: url({ area: clave, pagina: 1 }), texto, activa: r.tabla === clave })),
           ]}
         />

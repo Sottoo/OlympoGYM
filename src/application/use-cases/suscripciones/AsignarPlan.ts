@@ -1,5 +1,5 @@
-import { type MetodoPago, validarNuevoPago } from "@/domain/entities/Pago";
-import { calcularFechaFin } from "@/domain/entities/Plan";
+import { type MetodoPago, revisarFechaDeCobro, validarNuevoPago } from "@/domain/entities/Pago";
+import { calcularFechaFin, esPlanDeVisita } from "@/domain/entities/Plan";
 import type { Suscripcion } from "@/domain/entities/Suscripcion";
 import type { PlanRepository } from "@/domain/repositories/PlanRepository";
 import type { SocioRepository } from "@/domain/repositories/SocioRepository";
@@ -7,6 +7,7 @@ import type { SuscripcionRepository } from "@/domain/repositories/SuscripcionRep
 import type { Reloj } from "@/domain/services/Reloj";
 import { ErrorDeDominio, NoEncontrado, SinPermiso } from "@/domain/shared/ErrorDeDominio";
 import { sumarDias } from "@/domain/shared/fechas";
+import { formatearFecha } from "@/shared/formato";
 
 export interface EntradaAsignarPlan {
   socioId: string;
@@ -15,14 +16,20 @@ export interface EntradaAsignarPlan {
   /** Si no se indica, se cobra el precio del plan. */
   monto?: number;
   nota?: string | null;
+  /** Día en que se cobró, si se olvidó registrar a tiempo (hasta 31 días atrás). Si no, hoy. */
+  fecha?: string | null;
 }
 
 /**
  * Asigna (o renueva) un plan a un socio y registra el pago en mostrador.
+ * Si se olvidó registrar un cobro, se puede anotar con su fecha real.
  *
- * Regla de negocio: si el socio renueva antes de que se le acabe su plan,
- * el nuevo periodo empieza al día siguiente de su vencimiento actual,
- * para que no pierda los días que ya pagó.
+ * Reglas de negocio:
+ *  · Una membresía a la vez: mientras la actual siga vigente no se le puede
+ *    cobrar otra (así no se cobra dos veces por error). Desde su último día
+ *    ya se puede renovar.
+ *  · Si renueva su último día, el nuevo periodo empieza al día siguiente,
+ *    para que no pierda ese día que ya pagó.
  */
 export class AsignarPlan {
   constructor(
@@ -32,6 +39,8 @@ export class AsignarPlan {
     private readonly reloj: Reloj,
     /** Si quien cobra puede poner un monto distinto al precio del plan (descuentos). */
     private readonly permitirOtroMonto = true,
+    /** Si quien cobra puede anotar un cobro con fecha de otro día (cambia cortes ya cerrados). */
+    private readonly permitirOtraFecha = true,
   ) {}
 
   async ejecutar(entrada: EntradaAsignarPlan): Promise<Suscripcion> {
@@ -48,16 +57,30 @@ export class AsignarPlan {
       throw new SinPermiso("cobrar un monto distinto al precio del plan");
     }
 
-    const hoy = this.reloj.hoy();
-    const ultima = await this.suscripciones.obtenerUltimaDeSocio(socio.id);
-    const fechaInicio = ultima && ultima.fechaFin >= hoy ? sumarDias(ultima.fechaFin, 1) : hoy;
+    // El cobro cuenta el día en que se hizo: si se registra tarde, la membresía empieza ese día
+    // y el dinero entra en el corte de ese día.
+    const dia = revisarFechaDeCobro(entrada.fecha, this.reloj.hoy());
+    if (!this.permitirOtraFecha && dia !== this.reloj.hoy()) throw new SinPermiso("registrar un cobro con fecha de otro día");
+    const historial = await this.suscripciones.listarPorSocio(socio.id);
+    // Las visitas de un día no son membresías: no bloquean ni se renuevan.
+    const ultima = ultimaMembresia(historial);
+    if (ultima && ultima.fechaFin > dia) {
+      throw new ErrorDeDominio(
+        ultima.fechaInicio > dia
+          ? `${socio.nombre} ya tiene pagada su siguiente membresía (${ultima.planNombre}, del ${formatearFecha(ultima.fechaInicio)} al ${formatearFecha(ultima.fechaFin)}). No se le puede cobrar otra.`
+          : `${socio.nombre} ya tiene su membresía vigente hasta el ${formatearFecha(ultima.fechaFin)}. Se podrá renovar a partir de ese día.`,
+      );
+    }
+    // Ese día ya lo tiene pagado (es el último de su membresía, o pagó la visita): la nueva empieza al siguiente.
+    const diaYaPagado = ultima?.fechaFin === dia || (!esPlanDeVisita(plan) && historial.some((s) => s.esVisita && s.fechaInicio === dia));
+    const fechaInicio = diaYaPagado ? sumarDias(dia, 1) : dia;
 
     const pago = validarNuevoPago({
       socioId: socio.id,
       suscripcionId: null,
       monto: entrada.monto ?? plan.precio,
       metodo: entrada.metodoPago,
-      fecha: hoy,
+      fecha: dia,
       nota: entrada.nota ?? null,
     });
 
@@ -65,4 +88,77 @@ export class AsignarPlan {
     const datosPago = { socioId, monto, metodo, fecha, nota };
     return this.suscripciones.crearConPago({ socioId: socio.id, planId: plan.id, fechaInicio, fechaFin: calcularFechaFin(fechaInicio, plan) }, datosPago);
   }
+}
+
+/**
+ * Corrige la membresía más reciente de un socio cuando se registró con el
+ * plan equivocado (p. ej. se puso Quincena y era Mensual): cambia el plan, el
+ * vencimiento (desde el mismo día de inicio) y el monto y método de su pago.
+ * Solo la última, para no descuadrar las que siguen. Queda en la bitácora.
+ */
+export class CorregirMembresia {
+  constructor(
+    private readonly planes: PlanRepository,
+    private readonly suscripciones: SuscripcionRepository,
+  ) {}
+
+  async ejecutar(entrada: { suscripcionId: string; planId: string; monto?: number; metodoPago: MetodoPago }): Promise<Suscripcion> {
+    const actual = await this.suscripciones.obtenerPorId(entrada.suscripcionId);
+    if (!actual) throw new NoEncontrado("La membresía");
+    if (actual.esVisita) throw new ErrorDeDominio("Las visitas de un día no se corrigen aquí.");
+    if (ultimaMembresia(await this.suscripciones.listarPorSocio(actual.socioId))?.id !== actual.id) throw new ErrorDeDominio("Solo se puede corregir la membresía más reciente del socio.");
+    const plan = await this.planes.obtenerPorId(entrada.planId);
+    if (!plan) throw new ErrorDeDominio("Elige el plan correcto.", "planId");
+    if (esPlanDeVisita(plan)) throw new ErrorDeDominio("Elige un plan de membresía, no la visita de un día.", "planId");
+    const pago = validarNuevoPago({
+      socioId: actual.socioId,
+      suscripcionId: actual.id,
+      monto: entrada.monto ?? plan.precio,
+      metodo: entrada.metodoPago,
+      fecha: actual.fechaInicio,
+      nota: null,
+    });
+    return this.suscripciones.corregir(actual.id, { planId: plan.id, fechaFin: calcularFechaFin(actual.fechaInicio, plan) }, { monto: pago.monto, metodo: pago.metodo });
+  }
+}
+
+/**
+ * Cancela una membresía cobrada por error (por ejemplo, se le cobró dos
+ * veces): borra la membresía y su pago, así que el dinero sale del corte del
+ * día en que se cobró. Queda en la bitácora.
+ *
+ * Solo la más reciente del socio, y solo si se registró hoy (aunque se haya
+ * anotado con fecha de otro día) o si todavía no empieza: una que ya lleva
+ * días en uso no se borra (si se registró con el plan equivocado, se usa
+ * Corregir).
+ */
+export class CancelarMembresia {
+  constructor(
+    private readonly suscripciones: SuscripcionRepository,
+    private readonly reloj: Reloj,
+  ) {}
+
+  async ejecutar(suscripcionId: string): Promise<void> {
+    const actual = await this.suscripciones.obtenerPorId(suscripcionId);
+    if (!actual) throw new NoEncontrado("La membresía");
+    if (actual.esVisita) throw new ErrorDeDominio("Las visitas de un día se anulan desde el mostrador.");
+    if (ultimaMembresia(await this.suscripciones.listarPorSocio(actual.socioId))?.id !== actual.id) {
+      throw new ErrorDeDominio("Solo se puede cancelar la membresía más reciente del socio.");
+    }
+    if (!sePuedeCancelar(actual, this.reloj)) {
+      throw new ErrorDeDominio("Esta membresía ya está en uso desde días atrás y no se puede cancelar. Si se registró con el plan equivocado, usa Corregir membresía.");
+    }
+    await this.suscripciones.anularConSuPago(actual.id);
+  }
+}
+
+/** Se registró hoy (aunque con fecha de otro día) o todavía no empieza. */
+export function sePuedeCancelar(s: Pick<Suscripcion, "fechaInicio" | "creadoEn">, reloj: Pick<Reloj, "hoy" | "local">): boolean {
+  const hoy = reloj.hoy();
+  return s.fechaInicio >= hoy || reloj.local(s.creadoEn).fecha === hoy;
+}
+
+/** La membresía más reciente, sin contar visitas de un día. Recibe la lista de la más lejana a la más antigua. */
+function ultimaMembresia(historial: Suscripcion[]): Suscripcion | null {
+  return historial.find((s) => !s.esVisita) ?? null;
 }

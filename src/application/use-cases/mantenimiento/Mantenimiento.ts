@@ -277,9 +277,6 @@ export class EliminarEquipo {
   async ejecutar(id: string): Promise<string> {
     const equipo = await this.repo.obtenerEquipo(id);
     if (!equipo) throw new NoEncontrado("El equipo");
-    if (await this.repo.tieneHistorial(id)) {
-      throw new ErrorDeDominio("Este equipo ya tiene mantenimientos o reportes; eliminarlo borraría ese historial. Mejor dalo de baja.");
-    }
     await this.repo.eliminarEquipo(id);
     return equipo.nombre;
   }
@@ -304,23 +301,46 @@ export class RegistrarMantenimiento {
   }
 }
 
-export class ObtenerMantenimiento {
-  constructor(private readonly repo: MantenimientoRepository) {}
+/**
+ * Un pago solo se anula el mismo día: los de días anteriores ya están en
+ * cortes de caja cerrados y cambiarían lo que se contó. También se permite
+ * si se capturó hoy (aunque con fecha atrasada), para corregir un error al momento.
+ */
+export function sePuedeAnular(abono: Pick<Abono, "fecha" | "creadoEn">, hoy: FechaISO, reloj: Pick<Reloj, "local">): boolean {
+  return abono.fecha === hoy || reloj.local(abono.creadoEn).fecha === hoy;
+}
 
-  async ejecutar(id: string): Promise<Mantenimiento & { abonos: Abono[]; resolvio: ReporteFalla[] }> {
+export class ObtenerMantenimiento {
+  constructor(
+    private readonly repo: MantenimientoRepository,
+    private readonly reloj: Reloj,
+  ) {}
+
+  async ejecutar(id: string): Promise<
+    Mantenimiento & { abonos: (Abono & { anulable: boolean })[]; resolvio: ReporteFalla[]; eliminable: boolean }
+  > {
     const m = await this.repo.obtenerMantenimiento(id);
     if (!m) throw new NoEncontrado("El registro de mantenimiento");
+    const hoy = this.reloj.hoy();
     const reportes = await this.repo.listarReportes({ equipoId: m.equipoId });
-    return { ...m, resolvio: reportes.filter((r) => r.mantenimientoId === id) };
+    const abonos = m.abonos.map((a) => ({ ...a, anulable: sePuedeAnular(a, hoy, this.reloj) }));
+    return { ...m, abonos, resolvio: reportes.filter((r) => r.mantenimientoId === id), eliminable: abonos.every((a) => a.anulable) };
   }
 }
 
 export class EliminarMantenimiento {
-  constructor(private readonly repo: MantenimientoRepository) {}
+  constructor(
+    private readonly repo: MantenimientoRepository,
+    private readonly reloj: Reloj,
+  ) {}
 
   async ejecutar(id: string): Promise<{ equipoId: string }> {
     const m = await this.repo.obtenerMantenimiento(id);
     if (!m) throw new NoEncontrado("El registro de mantenimiento");
+    const hoy = this.reloj.hoy();
+    if (m.abonos.some((a) => !sePuedeAnular(a, hoy, this.reloj))) {
+      throw new ErrorDeDominio("Este registro tiene pagos de días anteriores que ya están en sus cortes; no se puede eliminar.");
+    }
     await this.repo.eliminarMantenimiento(id);
     return { equipoId: m.equipoId };
   }
@@ -342,11 +362,17 @@ export class RegistrarAbono {
 }
 
 export class EliminarAbono {
-  constructor(private readonly repo: MantenimientoRepository) {}
+  constructor(
+    private readonly repo: MantenimientoRepository,
+    private readonly reloj: Reloj,
+  ) {}
 
   async ejecutar(id: string): Promise<{ mantenimientoId: string }> {
     const abono = await this.repo.obtenerAbono(id);
     if (!abono) throw new NoEncontrado("El pago");
+    if (!sePuedeAnular(abono, this.reloj.hoy(), this.reloj)) {
+      throw new ErrorDeDominio("Este pago es de un día anterior y ya está en el corte de ese día; solo se puede anular el mismo día en que se pagó.");
+    }
     await this.repo.eliminarAbono(id);
     return { mantenimientoId: abono.mantenimientoId };
   }
@@ -427,12 +453,20 @@ export class ObtenerSalidasDelDia {
 export class ReportarFalla {
   constructor(private readonly repo: MantenimientoRepository) {}
 
-  async ejecutar(datos: DatosReporte): Promise<string> {
+  /** `escalada`: la falla ya estaba reportada y ahora se marcó fuera de servicio. */
+  async ejecutar(datos: DatosReporte): Promise<{ id: string; escalada: boolean }> {
     const validos = validarReporte(datos);
     const abiertos = await this.repo.listarReportes({ abiertos: true, equipoId: validos.equipoId });
     const igual = abiertos.find((r) => claveDeNombre(r.descripcion) === claveDeNombre(validos.descripcion));
-    if (igual) throw new ErrorDeDominio("Esa falla ya está reportada; la administración ya la tiene en su lista.", "descripcion");
-    return this.repo.crearReporte(validos);
+    if (igual) {
+      // La misma falla empeoró: se sube el reporte que ya existe en vez de duplicarlo.
+      if (validos.fueraDeServicio && !igual.fueraDeServicio) {
+        await this.repo.marcarFueraDeServicio(igual.id);
+        return { id: igual.id, escalada: true };
+      }
+      throw new ErrorDeDominio("Esa falla ya está reportada; la administración ya la tiene en su lista.", "descripcion");
+    }
+    return { id: await this.repo.crearReporte(validos), escalada: false };
   }
 }
 

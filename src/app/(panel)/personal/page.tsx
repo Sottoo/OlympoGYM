@@ -1,52 +1,93 @@
 import type { Metadata } from "next";
-import { PERMISOS } from "@/domain/shared/permisos";
-import { exigirPermiso, listarPersonal } from "@/infrastructure/auth/autenticacion";
+import { ROLES } from "@/domain/shared/permisos";
+import { exigirPermiso, listarPersonal, permisosExtraDeRecepcion } from "@/infrastructure/auth/autenticacion";
+import { entorno } from "@/infrastructure/config/entorno";
 import { Encabezado } from "@/presentation/components/Encabezado";
+import { Insignia } from "@/presentation/components/Insignia";
+import { MensajeExito } from "@/presentation/components/Mensajes";
 import { Panel } from "@/presentation/components/Panel";
 import { fechaLocal, formatearFecha } from "@/shared/formato";
-import { entorno } from "@/infrastructure/config/entorno";
-import { AccionesDeCuenta, FormularioNuevaCuenta, PerfilDeCuenta } from "./FormulariosPersonal";
+import { AccionesDeCuenta, FormularioNuevaCuenta, PermisosDeRecepcion } from "./FormulariosPersonal";
 
 export const metadata: Metadata = { title: "Personal" };
 export const dynamic = "force-dynamic";
 
-/** Cuentas de quienes usan el programa y lo que puede hacer cada perfil. Solo la administración entra aquí. */
-export default async function PaginaPersonal() {
+function aviso(clave?: string, n = ""): string | undefined {
+  const [nombre, usuario] = n.split("|");
+  switch (clave) {
+    case "creada":
+      return `Cuenta creada. ${nombre} ya puede entrar con el usuario «${usuario}».`;
+    case "perfil-administracion":
+      return `${nombre} ahora es Administración: puede hacer todo.`;
+    case "perfil-recepcion":
+      return `${nombre} ahora es Recepción.`;
+    case "contrasena":
+      return `Contraseña nueva guardada para ${nombre}. Dísela en persona, no por mensaje.`;
+    case "editada":
+      return `Datos de ${nombre} guardados. Entra con el usuario «${usuario}».`;
+    case "eliminada":
+      return `Cuenta de ${nombre} eliminada. Lo que hizo sigue en la bitácora.`;
+    case "desactivada":
+      return `Cuenta de ${nombre} desactivada: ya no puede entrar.`;
+    case "activada":
+      return `Cuenta de ${nombre} activada: ya puede entrar.`;
+    case "permisos":
+      return `Permisos de Recepción guardados: ${nombre === "1" ? "1 permiso extra" : `${nombre} permisos extra`}.`;
+    case "permisos-estandar":
+      return "Recepción quedó con los permisos estándar.";
+    default:
+      return undefined;
+  }
+}
+
+/** Cuentas de quienes usan el programa y lo que puede hacer Recepción. Solo la administración entra aquí. */
+export default async function PaginaPersonal({ searchParams }: { searchParams: Promise<{ aviso?: string; n?: string }> }) {
   const yo = await exigirPermiso("personal.gestionar");
-  const cuentas = await listarPersonal();
+  const [{ aviso: clave, n }, cuentas] = await Promise.all([searchParams, listarPersonal()]);
+  const extras = [...permisosExtraDeRecepcion()];
 
   return (
     <div className="pagina">
-      <Encabezado icono="usuario" titulo="Personal" descripcion="Quién puede entrar al programa y con qué perfil." />
+      <Encabezado guia="personal" icono="usuario" titulo="Personal" descripcion="Quién entra al programa y qué puede hacer." />
+
+      <MensajeExito mensaje={aviso(clave, n)} />
 
       <div className="con-lateral">
         <div className="bloques">
-          <section className="superficie overflow-x-auto">
+          {/* Sin recorte horizontal: el menú «Más» de cada cuenta se despliega encima. */}
+          <section className="superficie">
             <table className="tabla">
               <thead>
                 <tr>
                   <th>Nombre</th>
                   <th>Perfil</th>
                   <th>Desde</th>
-                  <th className="text-right">Acciones</th>
+                  <th>
+                    <span className="sr-only">Acciones</span>
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {cuentas.map((c) => (
-                  <tr key={c.id} className={c.activo ? "" : "opacity-55"}>
+                  <tr key={c.id} className={c.activo ? "" : "text-gris"}>
                     <td>
-                      <b className="block whitespace-nowrap font-semibold">
+                      <b className="block font-semibold whitespace-nowrap">
                         {c.nombre}
                         {c.id === yo.id && <span className="ml-2 text-[0.75rem] font-normal text-gris">(tú)</span>}
                       </b>
                       <span className="text-[0.8rem] text-gris">usuario: {c.usuario}</span>
                     </td>
                     <td>
-                      <PerfilDeCuenta id={c.id} rol={c.rol} activo={c.activo} esYo={c.id === yo.id} />
+                      <span className="flex flex-wrap gap-1.5">
+                        <Insignia tono={c.rol === "administrador" ? "oscuro" : "neutro"}>{ROLES[c.rol].nombre}</Insignia>
+                        {!c.activo && <Insignia tono="rojo">Desactivada</Insignia>}
+                      </span>
                     </td>
-                    <td className="whitespace-nowrap text-[0.85rem] text-gris">{formatearFecha(fechaLocal(c.creadoEn, entorno.zonaHoraria))}</td>
+                    <td className="text-[0.85rem] whitespace-nowrap text-gris">{formatearFecha(fechaLocal(c.creadoEn, entorno.zonaHoraria))}</td>
                     <td>
-                      <AccionesDeCuenta id={c.id} activo={c.activo} esYo={c.id === yo.id} />
+                      <div className="flex justify-end">
+                        <AccionesDeCuenta id={c.id} nombre={c.nombre} usuario={c.usuario} rol={c.rol} activo={c.activo} esYo={c.id === yo.id} />
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -54,23 +95,12 @@ export default async function PaginaPersonal() {
             </table>
           </section>
 
-          <Panel titulo="Lo que no puede hacer Recepción">
-            <p className="text-[0.88rem] text-tinta-suave">
-              Recepción registra entradas, da de alta y edita socios, cobra membresías al precio del plan, cobra visitas, vende en la tienda.
-              Consulta el inventario y el corte de su día. No puede:
-            </p>
-            <ul className="mt-3 grid gap-x-8 gap-y-1.5 text-[0.86rem] sm:grid-cols-2">
-              {Object.values(PERMISOS).map((texto) => (
-                <li key={texto} className="flex gap-2">
-                  <span aria-hidden className="font-bold text-hilo">×</span>
-                  <span className="first-letter:uppercase">{texto}</span>
-                </li>
-              ))}
-            </ul>
+          <Panel titulo="Lo que puede hacer Recepción">
+            <PermisosDeRecepcion key={extras.join()} activos={extras} />
           </Panel>
         </div>
 
-        <Panel titulo="Nueva cuenta" descripcion="Para cada persona que atienda el mostrador: así la bitácora dice quién hizo qué.">
+        <Panel titulo="Nueva cuenta">
           <FormularioNuevaCuenta />
         </Panel>
       </div>

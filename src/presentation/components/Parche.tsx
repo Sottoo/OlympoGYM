@@ -33,7 +33,7 @@ export function Parche({
   return (
     <svg
       role="img"
-      aria-label={`Parche del socio número ${dorsal}`}
+      aria-label={`Socio número ${dorsal}`}
       width={tamano}
       height={tamano}
       viewBox="0 0 210 210"

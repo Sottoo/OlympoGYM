@@ -172,6 +172,19 @@ export class EditarProducto {
     if (!actual) throw new NoEncontrado("El producto");
     const repetido = revisarRepetidos(await this.productos.listar(), validos, productoId);
     if (repetido) throw new ErrorDeDominio(repetido.mensaje, repetido.campo);
+    // Los cortes y el historial leen el nombre, la forma de venta y la porción actuales del producto:
+    // si ya se vendió, cambiarlos reescribiría ventas pasadas y mezclaría piezas con gramos.
+    const cambiaLoVendido =
+      actual.nombre !== validos.nombre ||
+      actual.unidad !== validos.unidad ||
+      actual.porcionGramos !== validos.porcionGramos ||
+      actual.porcionNombre !== validos.porcionNombre;
+    if (cambiaLoVendido && (await this.productos.tieneVentas(productoId))) {
+      throw new ErrorDeDominio(
+        "Este producto ya se vendió: su nombre y forma de venta no se cambian para no alterar los cortes. Desactívalo y crea uno nuevo.",
+        actual.unidad !== validos.unidad ? "unidad" : actual.nombre !== validos.nombre ? "nombre" : "porcionGramos",
+      );
+    }
     // La existencia está en piezas o en gramos: cambiar la forma de venta con mercancía la volvería incorrecta.
     if (actual.unidad !== validos.unidad && actual.stock !== 0) {
       throw new ErrorDeDominio("Para cambiar cómo se vende, primero deja su existencia en 0 con un ajuste por conteo.", "unidad");
@@ -190,8 +203,10 @@ export class CambiarEstadoProducto {
 }
 
 /**
- * Borra un producto dado de alta por error. Si ya tiene ventas no se puede
- * (se perdería el historial de caja): entonces se desactiva.
+ * Borra un producto para siempre. Si nunca se vendió, desaparece con sus
+ * movimientos. Si ya se vendió, deja de aparecer en todas las pantallas y
+ * libera su código, pero sus ventas siguen en los cortes de esos días con su
+ * nombre, para que la caja cuadre. No se puede deshacer.
  */
 export class EliminarProducto {
   constructor(
@@ -202,9 +217,6 @@ export class EliminarProducto {
   async ejecutar(productoId: string): Promise<string> {
     const producto = await this.productos.obtenerPorId(productoId);
     if (!producto) throw new NoEncontrado("El producto");
-    if (await this.productos.tieneVentas(productoId)) {
-      throw new ErrorDeDominio("Este producto ya tiene ventas, y eliminarlo borraría ese historial. Mejor desactívalo: deja de aparecer en la Tienda y se conserva todo.");
-    }
     await this.productos.eliminar(productoId);
     if (producto.foto) await this.fotos.borrar(producto.foto).catch(() => undefined);
     return producto.nombre;

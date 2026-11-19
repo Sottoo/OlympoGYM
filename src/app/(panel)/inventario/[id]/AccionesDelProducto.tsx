@@ -11,8 +11,9 @@ type Vista = "desactivar" | "eliminar";
 
 /**
  * Desactivar, reactivar o eliminar un producto, explicando antes qué pasa con
- * cada opción: desactivar lo oculta y conserva todo; eliminar es solo para
- * altas por error (sin ventas) y no se puede deshacer.
+ * cada opción: desactivar lo oculta y conserva todo (se puede reactivar);
+ * eliminar lo borra para siempre, pero sus ventas pasadas se quedan en los
+ * cortes para que la caja siga cuadrando.
  */
 export function AccionesDelProducto({
   productoId,
@@ -39,9 +40,14 @@ export function AccionesDelProducto({
   return (
     <>
       {activo ? (
-        <button type="button" onClick={() => abrir("desactivar")} className="boton-secundario">
-          Desactivar
-        </button>
+        <>
+          <button type="button" onClick={() => abrir("desactivar")} className="boton-secundario">
+            Desactivar
+          </button>
+          <button type="button" onClick={() => abrir("eliminar")} className="boton-peligro">
+            Eliminar
+          </button>
+        </>
       ) : (
         <>
           <form action={accionCambiarEstadoProducto}>
@@ -49,11 +55,9 @@ export function AccionesDelProducto({
             <input type="hidden" name="activo" value="true" />
             <BotonEnviar textoEnviando="Reactivando…">Reactivar</BotonEnviar>
           </form>
-          {!tieneVentas && (
-            <button type="button" onClick={() => abrir("eliminar")} className="boton-peligro">
-              Eliminar
-            </button>
-          )}
+          <button type="button" onClick={() => abrir("eliminar")} className="boton-peligro">
+            Eliminar
+          </button>
         </>
       )}
 
@@ -83,15 +87,13 @@ export function AccionesDelProducto({
                 <li>· Su historial de ventas y movimientos se conserva.</li>
                 <li>· Puedes reactivarlo cuando quieras desde Inventario › Desactivados.</li>
               </ul>
-              {!tieneVentas && (
-                <p className="rounded-[10px] bg-hundido px-4 py-3 text-[0.86rem] text-gris">
-                  ¿Lo diste de alta por error? Como no tiene ventas, también puedes{" "}
-                  <button type="button" onClick={() => setVista("eliminar")} className="enlace font-semibold text-rojo">
-                    eliminarlo
-                  </button>
-                  .
-                </p>
-              )}
+              <p className="rounded-[10px] bg-hundido px-4 py-3 text-[0.86rem] text-gris">
+                ¿Ya no lo vas a vender nunca? También puedes{" "}
+                <button type="button" onClick={() => setVista("eliminar")} className="enlace font-semibold text-rojo">
+                  eliminarlo para siempre
+                </button>
+                .
+              </p>
               <form action={accionCambiarEstadoProducto} className="flex flex-wrap justify-end gap-2 border-t border-linea pt-4">
                 <input type="hidden" name="productoId" value={productoId} />
                 <input type="hidden" name="activo" value="false" />
@@ -105,13 +107,17 @@ export function AccionesDelProducto({
             </>
           ) : (
             <>
-              <p className="text-[0.9rem] text-tinta-suave">
-                Úsalo solo si lo diste de alta por error.{" "}
-                {movimientos > 0
-                  ? `También se borran sus ${movimientos === 1 ? "movimiento" : `${movimientos} movimientos`} de inventario. `
-                  : ""}
-                <strong className="font-semibold text-rojo">No se puede deshacer.</strong>
-              </p>
+              <ul className="grid gap-1.5 text-[0.9rem] text-tinta-suave">
+                <li>· Desaparece del inventario, la Tienda, la lista de compra y los conteos, y su código queda libre.</li>
+                {tieneVentas ? (
+                  <li>· Sus ventas pasadas se quedan en los cortes de esos días con su nombre, para que la caja siga cuadrando.</li>
+                ) : movimientos > 0 ? (
+                  <li>· Nunca se vendió: se borran también sus {movimientos === 1 ? "movimiento" : `${movimientos} movimientos`} de inventario.</li>
+                ) : null}
+                <li>
+                  · <strong className="font-semibold text-rojo">No se puede deshacer.</strong> Si solo dejarás de venderlo un tiempo, mejor desactívalo.
+                </li>
+              </ul>
               <MensajeError mensaje={estadoEliminar.error} titulo="No se pudo eliminar." />
               <form action={eliminar} className="flex flex-wrap justify-end gap-2 border-t border-linea pt-4">
                 <input type="hidden" name="productoId" value={productoId} />

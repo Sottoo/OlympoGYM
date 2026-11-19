@@ -79,7 +79,8 @@ export function PanelFlotante({
     >
       {children}
     </div>,
-    document.body,
+    // Dentro de una ventana modal, lo de afuera queda inerte: el panel se pone dentro de ella.
+    document.querySelector<HTMLElement>("dialog:modal") ?? document.body,
   );
 }
 

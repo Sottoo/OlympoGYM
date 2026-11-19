@@ -23,12 +23,11 @@ export default async function PaginaRegistrar({ searchParams }: { searchParams: 
     <div className="pagina max-w-4xl">
       <Encabezado
         titulo="Registrar mantenimiento"
-        volver={elegido ? { href: `/mantenimiento/equipos/${elegido.equipo.id}`, texto: elegido.equipo.nombre } : { href: "/mantenimiento", texto: "Mantenimiento" }}
-        descripcion="Lo que se le hizo a una máquina, quién lo hizo, cuánto costó y cómo quedó el pago."
+        volver={elegido ? { href: `/mantenimiento/equipos/${elegido.equipo.id}`, texto: elegido.equipo.nombre } : { href: "/mantenimiento", texto: "Máquinas" }}
       />
       {activos.length === 0 ? (
-        <Vacio accion={<Link href="/mantenimiento/equipos/rapido" className="boton">Alta rápida de equipos</Link>}>
-          Primero da de alta las máquinas del gimnasio.
+        <Vacio accion={<Link href="/mantenimiento/equipos/rapido" className="boton">Agregar máquinas</Link>}>
+          Primero agrega las máquinas del gimnasio.
         </Vacio>
       ) : (
         <FormularioMantenimiento

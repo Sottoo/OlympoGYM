@@ -1,5 +1,5 @@
 import { ErrorDeDominio } from "../shared/ErrorDeDominio";
-import { type FechaISO, sumarDias, sumarMeses } from "../shared/fechas";
+import { type FechaISO, sumarDias } from "../shared/fechas";
 import { LIMITES, limpiarEspacios, revisarDinero, revisarEntero } from "../shared/reglas";
 
 export type UnidadDuracion = "dias" | "semanas" | "meses";
@@ -46,24 +46,29 @@ export function validarNuevoPlan(datos: DatosNuevoPlan): DatosNuevoPlan {
   return { ...datos, nombre, precio: Math.round(datos.precio * 100) / 100, descripcion };
 }
 
+/** Días que cuenta cada unidad. Un mes del gimnasio son 30 días exactos, no un mes de calendario. */
+export const DIAS_POR_UNIDAD: Record<UnidadDuracion, number> = { dias: 1, semanas: 7, meses: 30 };
+
+/** Cuántos días dura un plan en total (un plan de 2 meses = 60 días). */
+export function diasDelPlan(plan: Pick<Plan, "duracion" | "unidad">): number {
+  return plan.duracion * DIAS_POR_UNIDAD[plan.unidad];
+}
+
 /**
  * Último día en que la membresía es válida (inclusive).
- * Un plan mensual que inicia el 1 de sept. vence el 30 de sept.; el que
- * inicia el 31 de enero vence el 28 (o 29) de febrero, el último día de ese
- * mes, sin perder un día ni recorrer la fecha de corte en cada renovación.
+ * La mensualidad dura 30 días exactos: la que empieza el 1 de octubre vale
+ * hasta el 30 de octubre, y la que empieza el 31 de enero, hasta el 1 de
+ * marzo. Así todos pagan lo mismo por los mismos días, sin importar si el mes
+ * trae 28 o 31.
  */
 export function calcularFechaFin(inicio: FechaISO, plan: Pick<Plan, "duracion" | "unidad">): FechaISO {
-  if (plan.unidad === "meses") {
-    const mismoDia = sumarMeses(inicio, plan.duracion);
-    // Si el mes destino no tiene ese día (31 → abril), sumarMeses ya dio su último día: ese es el fin.
-    const recortado = Number(mismoDia.slice(8)) < Number(inicio.slice(8));
-    return recortado ? mismoDia : sumarDias(mismoDia, -1);
-  }
-  return sumarDias(inicio, plan.duracion * (plan.unidad === "semanas" ? 7 : 1) - 1);
+  return sumarDias(inicio, diasDelPlan(plan) - 1);
 }
 
 export function describirDuracion(plan: Pick<Plan, "duracion" | "unidad">): string {
   const singular = { dias: "día", semanas: "semana", meses: "mes" }[plan.unidad];
   const plural = { dias: "días", semanas: "semanas", meses: "meses" }[plan.unidad];
-  return `${plan.duracion} ${plan.duracion === 1 ? singular : plural}`;
+  const texto = `${plan.duracion} ${plan.duracion === 1 ? singular : plural}`;
+  // Los meses se aclaran en días: "1 mes (30 días)".
+  return plan.unidad === "meses" ? `${texto} (${diasDelPlan(plan)} días)` : texto;
 }

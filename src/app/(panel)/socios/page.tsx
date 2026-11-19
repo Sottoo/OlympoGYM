@@ -8,8 +8,10 @@ import { casosDeUso } from "@/infrastructure/contenedor";
 import { Encabezado } from "@/presentation/components/Encabezado";
 import { Icono } from "@/presentation/components/Icono";
 import { EstadoMembresia } from "@/presentation/components/Insignia";
-import { Vacio } from "@/presentation/components/Mensajes";
+import { MensajeExito, Vacio } from "@/presentation/components/Mensajes";
 import { Pestanas } from "@/presentation/components/Pestanas";
+import { Suspense } from "react";
+import { BuscadorSocios } from "./BuscadorSocios";
 import { describirDiasRestantes, formatearFecha, formatearTelefono } from "@/shared/formato";
 
 export const metadata: Metadata = { title: "Socios" };
@@ -21,13 +23,19 @@ const PESTANAS: { filtro: FiltroSocios; texto: string }[] = [
   { filtro: "por_vencer", texto: "Por vencer" },
   { filtro: "vencida", texto: "Vencidos" },
   { filtro: "sin_plan", texto: "Sin plan" },
-  { filtro: "bajas", texto: "Bajas" },
+  { filtro: "bajas", texto: "En espera (bajas)" },
 ];
 
-export default async function PaginaSocios({ searchParams }: { searchParams: Promise<{ q?: string; filtro?: string }> }) {
-  const { q = "", filtro: filtroUrl } = await searchParams;
+export default async function PaginaSocios({ searchParams }: { searchParams: Promise<{ q?: string; filtro?: string; eliminado?: string }> }) {
+  const { q = "", filtro: filtroUrl, eliminado } = await searchParams;
   const filtro: FiltroSocios = (FILTROS_SOCIOS as readonly string[]).includes(filtroUrl ?? "") ? (filtroUrl as FiltroSocios) : "activos";
-  const [{ socios, conteos }, exporta] = await Promise.all([(await casosDeUso()).listarSocios.ejecutar({ busqueda: q, filtro }), tienePermiso("exportar")]);
+  const casos = await casosDeUso();
+  const [{ socios, conteos }, exporta, unePersonas] = await Promise.all([
+    casos.listarSocios.ejecutar({ busqueda: q, filtro }),
+    tienePermiso("exportar"),
+    tienePermiso("socios.eliminar"),
+  ]);
+  const duplicados = unePersonas ? await casos.detectarDuplicados.ejecutar() : [];
   const verBajas = filtro === "bajas";
 
   const hrefFiltro = (f: FiltroSocios, conBusqueda = true) => {
@@ -40,9 +48,9 @@ export default async function PaginaSocios({ searchParams }: { searchParams: Pro
 
   return (
     <div className="pagina">
-      <Encabezado icono="socios"
+      <Encabezado guia="socios" icono="socios"
         titulo="Socios"
-        descripcion={`${conteos.activos} activos · ${conteos.bajas} dados de baja`}
+        descripcion={`${conteos.activos} activos · ${conteos.bajas} en espera (dados de baja, se pueden reactivar)`}
         acciones={
           <>
             {exporta && (
@@ -59,6 +67,31 @@ export default async function PaginaSocios({ searchParams }: { searchParams: Pro
         }
       />
 
+      <MensajeExito mensaje={eliminado ? `${eliminado} se eliminó para siempre. Sus pagos se quedan en los cortes como «Socio eliminado».` : undefined} />
+
+      {duplicados.length > 0 && (
+        <section aria-label="Posibles registros dobles" className="grid gap-2 rounded-[12px] bg-ambar-tenue px-4 py-3.5 text-[0.9rem]">
+          <p className="flex items-start gap-2">
+            <Icono nombre="alerta" className="mt-0.5 size-[18px] shrink-0 text-ambar" />
+            <span>
+              <b className="font-semibold">
+                {duplicados.length === 1 ? "Una persona parece registrada dos veces." : `${duplicados.length} personas parecen registradas dos veces.`}
+              </b>{" "}
+              Tienen exactamente el mismo nombre. Si son la misma persona, ábrela y une los registros para que su historial quede en uno solo.
+            </span>
+          </p>
+          <ul className="flex flex-wrap gap-2 pl-6">
+            {duplicados.map((g) => (
+              <li key={g[0].id}>
+                <Link href={`/socios/${g[0].id}?unir=1`} className="boton-secundario boton-chico">
+                  {g[0].nombre} · {g.map((p) => p.numero).join(" y ")}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       {/* Una sola barra: filtros a la izquierda, búsqueda a la derecha. */}
       <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
         <Pestanas
@@ -66,21 +99,14 @@ export default async function PaginaSocios({ searchParams }: { searchParams: Pro
           opciones={PESTANAS.map((p) => ({ href: hrefFiltro(p.filtro), texto: p.texto, cuenta: conteos[p.filtro], activa: p.filtro === filtro }))}
         />
 
-        <form role="search" className="flex w-full gap-2 sm:w-[19rem]">
-          {filtro !== "activos" && <input type="hidden" name="filtro" value={filtro} />}
-          <label htmlFor="q" className="sr-only">Buscar socio</label>
-          <div className="relative flex-1">
-            <Icono nombre="buscar" className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-gris" />
-            <input id="q" name="q" defaultValue={q} placeholder="Nombre o celular" className="campo pl-8" />
-          </div>
-          <button className="boton-secundario">Buscar</button>
-          {q && <Link href={hrefFiltro(filtro, false)} className="boton-secundario">Limpiar</Link>}
-        </form>
+        <Suspense>
+          <BuscadorSocios inicial={q} />
+        </Suspense>
       </div>
 
       {socios.length === 0 ? (
         <Vacio accion={!q && filtro === "activos" && <Link href="/socios/nuevo" className="boton">Inscribir el primer socio</Link>}>
-          {q ? `Nadie coincide con “${q}” en esta lista.` : verBajas ? "No hay socios dados de baja." : "No hay socios en esta lista."}
+          {q ? `Nadie coincide con “${q}” en esta lista.` : verBajas ? "No hay socios en espera. Los que se dan de baja aparecen aquí y se pueden reactivar cuando regresen." : "No hay socios en esta lista."}
         </Vacio>
       ) : (
         <div className="superficie overflow-x-auto">

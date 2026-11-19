@@ -36,7 +36,7 @@ export default async function PaginaRegistro({ params, searchParams }: { params:
       <Encabezado
         titulo={`${TIPOS_MANTENIMIENTO[m.tipo]} · ${m.equipoNombre}`}
         imagen={<Emblema {...dibujoDeEquipo({ nombre: m.equipoNombre, area: "otro" })} tamano="lg" />}
-        volver={{ href: `/mantenimiento/equipos/${m.equipoId}`, texto: m.equipoNombre }}
+        volver={m.equipoEliminado ? { href: "/mantenimiento/historial", texto: "Historial" } : { href: `/mantenimiento/equipos/${m.equipoId}`, texto: m.equipoNombre }}
         etiquetas={<EstadoPagoInsignia m={m} />}
         descripcion={
           <span className="first-letter:uppercase">
@@ -111,7 +111,14 @@ export default async function PaginaRegistro({ params, searchParams }: { params:
                       <td className="text-sm text-gris">{a.nota ?? ""}</td>
                       <td className="numero font-semibold">{formatearDinero(a.monto)}</td>
                       <td className="text-right">
-                        <AnularPago abonoId={a.id} monto={formatearDinero(a.monto)} />
+                        {/* Los pagos de días anteriores ya están en su corte: solo se anulan el mismo día. */}
+                        {a.anulable ? (
+                          <AnularPago abonoId={a.id} monto={formatearDinero(a.monto)} />
+                        ) : (
+                          <span className="text-[0.8rem] text-gris" title="Ya está en el corte de ese día; solo se puede anular el mismo día en que se pagó.">
+                            En su corte
+                          </span>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -128,8 +135,14 @@ export default async function PaginaRegistro({ params, searchParams }: { params:
             </Panel>
           )}
           <Panel titulo="¿Se registró por error?">
-            <p className="mb-3 text-[0.86rem] text-gris">Puedes eliminar este registro con sus pagos. Si arregló una falla, la falla vuelve a quedar abierta.</p>
-            <EliminarRegistro mantenimientoId={m.id} titulo={`${TIPOS_MANTENIMIENTO[m.tipo].toLowerCase()} de ${m.equipoNombre}`} pagos={m.abonos.length} />
+            {m.eliminable ? (
+              <>
+                <p className="mb-3 text-[0.86rem] text-gris">Puedes eliminar este registro con sus pagos. Si arregló una falla, la falla vuelve a quedar abierta.</p>
+                <EliminarRegistro mantenimientoId={m.id} titulo={`${TIPOS_MANTENIMIENTO[m.tipo].toLowerCase()} de ${m.equipoNombre}`} pagos={m.abonos.length} />
+              </>
+            ) : (
+              <p className="text-[0.86rem] text-gris">Este registro tiene pagos de días anteriores que ya están en sus cortes; no se puede eliminar.</p>
+            )}
           </Panel>
         </aside>
       </div>

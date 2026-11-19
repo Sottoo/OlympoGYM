@@ -6,7 +6,7 @@ import { casosDeUso } from "@/infrastructure/contenedor";
 import { Encabezado } from "@/presentation/components/Encabezado";
 import { AltaRapida } from "./AltaRapida";
 
-export const metadata: Metadata = { title: "Alta rápida de equipos" };
+export const metadata: Metadata = { title: "Agregar máquinas" };
 export const dynamic = "force-dynamic";
 
 export default async function PaginaAltaRapida() {
@@ -18,9 +18,9 @@ export default async function PaginaAltaRapida() {
   return (
     <div className="pagina">
       <Encabezado
-        titulo="Alta rápida de equipos"
-        volver={{ href: "/mantenimiento", texto: "Mantenimiento" }}
-        descripcion="Marca lo que hay en tu gimnasio y cuántos. Se numeran solos (Caminadora 1, 2, 3) y ya llevan el preventivo que suele recomendarse; después puedes ajustar cada uno."
+        titulo="Agregar varias máquinas"
+        volver={{ href: "/mantenimiento", texto: "Máquinas" }}
+        descripcion="Marca cuántas tienes de cada una. Se numeran solas (Caminadora 1, 2, 3…)."
       />
       <AltaRapida catalogo={EQUIPOS_TIPICOS} yaHay={yaHay} />
     </div>

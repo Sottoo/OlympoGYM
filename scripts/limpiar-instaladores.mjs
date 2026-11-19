@@ -1,9 +1,11 @@
 /**
- * Después de `electron-builder`, deja en dist-escritorio solo el instalador
- * recién hecho: borra los de versiones anteriores y los archivos de trabajo
- * (win-unpacked, .blockmap, latest.yml…), que no se usan porque no hay
- * actualizaciones automáticas. Solo corre si el instalador nuevo existe, así
- * que un error al compilar nunca deja la carpeta vacía.
+ * Después de `electron-builder`, quita de dist-escritorio solo los archivos de
+ * trabajo que genera el empaquetador (win-unpacked, .blockmap, latest.yml,
+ * builder-debug.yml, el .7z intermedio…). Nunca toca instaladores .exe ni
+ * archivos .zip u otros que haya guardado la persona: antes borraba todo lo
+ * demás, y eso podía llevarse archivos que no eran suyos de borrar.
+ * Solo corre si el instalador nuevo existe, así que un error al compilar nunca
+ * deja la carpeta a medias.
  */
 import { existsSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import path from "node:path";
@@ -18,7 +20,16 @@ if (!existsSync(path.join(salida, instalador))) {
   process.exit(1);
 }
 
-for (const archivo of readdirSync(salida).filter((a) => a !== instalador)) {
+/** Lo que deja electron-builder y no sirve para nada después de compilar. */
+const esDeTrabajo = (nombre) =>
+  /^win-unpacked(\.tmp(\.lock)?)?$/.test(nombre) ||
+  nombre.endsWith(".blockmap") ||
+  nombre.endsWith(".nsis.7z") ||
+  nombre === "latest.yml" ||
+  nombre === "builder-debug.yml" ||
+  nombre === "builder-effective-config.yaml";
+
+for (const archivo of readdirSync(salida).filter(esDeTrabajo)) {
   rmSync(path.join(salida, archivo), { recursive: true, force: true });
   console.log(`Quitado ${archivo}`);
 }

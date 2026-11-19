@@ -26,18 +26,13 @@ export function suscripcionVigenteOUltima(suscripciones: Suscripcion[], hoy: Fec
 
 export type EstadoMembresia = "vigente" | "por_vencer" | "vencida" | "sin_plan";
 
-/** Con cuántos días de anticipación una membresía se considera "por vencer". */
-export const DIAS_PARA_POR_VENCER = 7;
-
 /**
- * Los planes cortos no pueden estar "por vencer" desde el día en que se
- * compran: un plan de 1 semana avisa en sus últimos 2 días, uno de 15 días en
- * los últimos 5, y de un mes en adelante con los 7 días de siempre.
+ * Aviso de "por vencer": un día antes. En la mensualidad de 30 días el
+ * aviso sale el día 29 (le queda 1 día) y sigue el día 30, cuando vence.
+ * Así recepción le recuerda al socio justo a tiempo para renovar.
  */
-export function diasParaPorVencer(s: Pick<Suscripcion, "fechaInicio" | "fechaFin">): number {
-  const duracion = diasEntre(s.fechaInicio, s.fechaFin) + 1;
-  return Math.max(1, Math.min(DIAS_PARA_POR_VENCER, Math.floor(duracion / 3)));
-}
+export const DIAS_PARA_POR_VENCER = 1;
+
 
 export interface SituacionMembresia {
   estado: EstadoMembresia;
@@ -51,7 +46,7 @@ export function situacionDeMembresia(suscripcion: Suscripcion | null, hoy: Fecha
 
   const diasRestantes = diasEntre(hoy, suscripcion.fechaFin);
   const estado: EstadoMembresia =
-    diasRestantes < 0 ? "vencida" : diasRestantes <= diasParaPorVencer(suscripcion) ? "por_vencer" : "vigente";
+    diasRestantes < 0 ? "vencida" : diasRestantes <= DIAS_PARA_POR_VENCER ? "por_vencer" : "vigente";
 
   return { estado, diasRestantes, fechaFin: suscripcion.fechaFin };
 }

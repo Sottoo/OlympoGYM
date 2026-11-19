@@ -1,7 +1,7 @@
 # Olimpo GYM
 
 Programa de escritorio para Windows que administra el gimnasio: **mostrador de
-recepción** (registrar entradas por nombre, celular o número de socio),
+recepción** (registrar entradas por nombre, celular, número de socio o **huella digital**),
 **asistencias**, socios (altas, edición y bajas), planes, cobro de membresías,
 **ventas de mostrador**, **control de inventario**, **métricas**, **respaldos** y una **bitácora** de cambios que nadie puede editar.
 
@@ -115,6 +115,38 @@ SQLite (local) sin tocar las reglas del negocio ni las pantallas.
 - El **código de recuperación** se muestra una sola vez. Con él se restablece
   la contraseña en *¿Olvidaste tu contraseña?*; después se entrega uno nuevo.
 
+### Lector de huellas (opcional)
+
+El socio pone el dedo en el lector del mostrador y su entrada se registra sola
+(si su membresía está vigente; si no, aparece su ficha). La huella se registra
+en la ficha del socio, panel **Huella**: 4 toques del mismo dedo y la casilla de que el socio está de
+acuerdo en que su huella se use para registrar sus entradas (es un dato
+personal sensible).
+
+- **Lector:** HID DigitalPersona U.are.U 4500 (USB).
+- **En la computadora del mostrador** se instala el cliente gratuito de HID,
+  **HID Authentication Device Client** (antes *DigitalPersona Lite Client*):
+  <https://crossmatch.hid.gl/lite-client/>. Trae el driver del lector, el
+  servicio que lo atiende y el motor de comparación `dpfj.dll` (FingerJet).
+  Su licencia no permite meterlo en nuestro instalador; por eso, si falta, el
+  mostrador muestra **Instalar programa del lector**: lo descarga de la página
+  de HID, revisa que esté firmado por HID Global y abre su instalador
+  (`olimpo:instalar-lector` en `electron/main.cjs`).
+- **Cómo funciona:** la ventana recibe la imagen del dedo a través del servicio
+  de HID (scripts en `public/vendor/digitalpersona/`) y el servidor la compara
+  con `dpfj.dll` mediante `koffi` (`src/infrastructure/huellas/FingerJet.ts`).
+  Solo se guarda la plantilla (tabla `huellas`), nunca la imagen.
+- **Foco:** el servicio de HID solo entrega huellas a la página que dice tener
+  el foco, y en Electron `document.hasFocus()` se queda en `false` tras un
+  `window.confirm()` (el lector se ve encendido y "listo", pero no responde).
+  Por eso `lectorDeHuellas.ts` hace que la conexión siempre diga "con foco", y
+  el programa no usa `window.confirm`/`alert`.
+- **Con Smart App Control activado**, el instalador de HID falla en el paso
+  `StopAgent` (usa una DLL sin firma). Se puede instalar el `.msi` de HID con
+  un transform que quita solo ese paso; todo lo que queda instalado está firmado.
+- Sin el cliente de HID el programa funciona igual: el mostrador dice
+  "Lector de huellas no disponible" y se sigue buscando por nombre o número.
+
 ---
 
 ## 4. Respaldos
@@ -149,6 +181,68 @@ Para una versión nueva, sube `version` en `package.json`, genera el instalador
 y ejecútalo encima del anterior: los datos no se tocan (viven en `%APPDATA%`), y
 si la estructura de la base cambió, el programa la actualiza sola al abrir.
 
+### Actualizaciones automáticas
+
+**Desde la 1.0.0-beta.33 las actualizaciones no usan instalador.** Windows
+bloqueaba el instalador sin firma cuando lo lanzaba el programa. Ahora cada
+versión publica también `recursos-<versión>.zip` (unos 12 MB: la parte de
+Electron y el servidor compilado, ver `scripts/paquete-de-codigo.mjs`). El
+programa lo baja, revisa su huella SHA-512, lo descomprime en
+`%APPDATA%\Olimpo GYM\versiones\<versión>` y, tras el respaldo, se reinicia con
+él. `electron/arranque.cjs` (el punto de entrada, que no cambia) elige con qué
+código arrancar según `versiones/actual.json` (ver `electron/versiones.cjs`):
+
+- Una versión recién activada queda "en prueba": si no logra abrir, el
+  siguiente arranque regresa solo a la anterior (o a la instalada).
+- Si una versión nueva necesita otro Electron, se usa el instalador completo.
+- Si se instala a mano una versión más nueva que la descargada, se usa la
+  instalada.
+
+Revisa al abrir y cada 5 minutos.
+
+Antes (1.0.0-beta.26 a .32) se actualizaba con el instalador
+(`electron/actualizador.cjs`):
+
+1. Al abrir (y cada 6 horas) lee `actualizacion.json` de la última Release de
+   GitHub (`Sottoo/OlympoGYM`).
+2. Si la versión es más nueva, descarga el instalador por detrás y revisa su
+   tamaño y huella SHA-512; si no coinciden, lo borra.
+3. En el riel aparece **Versión nueva lista** y sale una notificación de Windows.
+   Se instala de cualquiera de estas formas:
+   - Clic en la notificación o en **Actualizar ahora**: se hace el respaldo, el
+     programa se cierra, se instala y se vuelve a abrir solo.
+   - Sin hacer nada: al cerrar el programa se hace el respaldo (con la ventana ya
+     cerrada) y se instala en silencio.
+
+   **Nunca se instala sin respaldo:** antes de instalar se guarda un
+   `...-antes-de-actualizar.zip` en DocumentosOlimpo GYMRespaldos y se
+   comprueba que traiga la base completa. Si falla o tarda más de lo normal, no
+   se instala y el programa sigue igual. El respaldo lo hace el servidor interno
+   (`/api/interno/respaldo-previo`), que solo acepta la llave aleatoria que el
+   programa le da al abrir.
+
+Sin internet o si algo falla, el programa sigue igual y lo reintenta después.
+Bitácora: `%APPDATA%\Olimpo GYM\actualizaciones.log` (cada revisión, la descarga,
+el respaldo, y el instalador anota cuándo empezó y terminó).
+
+Mientras el instalador trabaja en silencio se ve una ventanita "Actualizando
+Olimpo GYM a la versión X…". Si alguien abre el programa durante la instalación,
+avisa que se está actualizando y no se abre (abrirlo a medias lo rompía). Al
+volver a abrir, confirma con una notificación que quedó la versión nueva; si en
+30 minutos no quedó, lo anota y lo vuelve a intentar.
+
+Para publicar una versión (necesita `gh` con sesión: `winget install --id GitHub.cli` y `gh auth login`):
+
+```bash
+# 1. Sube "version" en package.json (por ejemplo 1.0.0-beta.27)
+npm run instalador:docker
+npm run publicar -- "Qué cambió en esta versión"
+```
+
+Una versión publicada no se reemplaza: para corregirla se publica otra con
+número mayor. Como el instalador no está firmado, la seguridad depende de la
+cuenta de GitHub: mantenla con verificación en dos pasos.
+
 ---
 
 ## 6. Comandos
@@ -161,6 +255,8 @@ si la estructura de la base cambió, el programa la actualiza sola al abrir.
 | `npm run build:escritorio` | Compila la versión de escritorio |
 | `npm run escritorio` | Abre la ventana con la versión compilada |
 | `npm run instalador` | Genera el instalador `.exe` en `dist-escritorio/` |
+| `npm run instalador:docker` | Igual, pero dentro de Docker (cuando Smart App Control bloquea el anterior) |
+| `npm run publicar` | Publica el instalador en GitHub para que el gimnasio se actualice solo |
 
 ---
 
@@ -168,7 +264,7 @@ si la estructura de la base cambió, el programa la actualiza sola al abrir.
 
 Lo que queda fuera de esta versión y se puede cotizar aparte:
 
-- Lector de código de barras con credenciales impresas, y lector de huella para asistencia.
+- Lector de código de barras con credenciales impresas.
 - Cancelar una venta capturada por error (hoy se corrige con un ajuste de stock).
 - Recordatorios de vencimiento por WhatsApp (manuales o automáticos con la API de WhatsApp Business, con costo por mensaje).
 - Registro de salida para saber quién está entrenando en este momento.

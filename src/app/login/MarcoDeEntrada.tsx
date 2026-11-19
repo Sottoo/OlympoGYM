@@ -34,7 +34,9 @@ export function MarcoDeEntrada({ titulo, descripcion, children }: { titulo: stri
           <p className="mb-7 mt-2 text-tinta-suave">{descripcion}</p>
           <div className="panel px-7 py-7">{children}</div>
         </div>
-        <p className="text-[0.76rem] text-gris">{entorno.nombreGimnasio} · todo funciona dentro de esta computadora</p>
+        <p className="text-[0.76rem] text-gris">
+          {entorno.nombreGimnasio} · <span className="font-semibold text-tinta-suave">versión {entorno.versionPrograma}</span>
+        </p>
       </section>
     </main>
   );

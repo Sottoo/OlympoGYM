@@ -12,10 +12,11 @@ export const dynamic = "force-dynamic";
 
 export default async function PaginaNuevoSocio() {
   const casos = await casosDeUso();
-  const [planes, cambiaMonto, creaPlanes] = await Promise.all([
+  const [planes, cambiaMonto, creaPlanes, cambiaFecha] = await Promise.all([
     casos.listarPlanes.ejecutar(true),
     tienePermiso("cobros.otroMonto"),
     tienePermiso("planes.gestionar"),
+    tienePermiso("cobros.corregir"),
   ]);
   // Primero las membresías (de menor a mayor duración tal como se crearon) y al final la visita.
   const opciones = [...planes]
@@ -24,7 +25,7 @@ export default async function PaginaNuevoSocio() {
 
   return (
     <div className="pagina mx-auto w-full max-w-3xl">
-      <Encabezado
+      <Encabezado guia="inscribir"
         titulo="Inscribir socio"
         volver={{ href: "/socios", texto: "Socios" }}
         descripcion="Sus datos, su plan y el pago en un solo paso."
@@ -43,7 +44,7 @@ export default async function PaginaNuevoSocio() {
           {creaPlanes ? "Créalo en Planes y regresa aquí." : "Pídele a la administración que lo cree en Planes."}
         </Vacio>
       ) : (
-        <FormularioSocio inscripcion={{ planes: opciones, puedeCambiarMonto: cambiaMonto }} />
+        <FormularioSocio inscripcion={{ planes: opciones, puedeCambiarMonto: cambiaMonto, puedeCambiarFecha: cambiaFecha }} />
       )}
     </div>
   );

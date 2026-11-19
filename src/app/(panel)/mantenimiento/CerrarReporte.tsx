@@ -37,14 +37,14 @@ export function CerrarReporte({ reporteId, equipo }: { reporteId: string; equipo
           <header className="flex items-start justify-between gap-4">
             <div>
               <h2 id={`cerrar-${reporteId}`} className="font-titulos text-[1.25rem] leading-tight">Cerrar la falla de «{equipo}»</h2>
-              <p className="mt-1 text-[0.86rem] text-gris">Para cuando se resolvió sin pagarle a nadie. Si hubo un gasto, mejor registra el arreglo.</p>
+              <p className="mt-1 text-[0.86rem] text-gris">Se resolvió sin gasto. Si hubo un gasto, mejor registra el arreglo.</p>
             </div>
             <button type="button" onClick={() => dialogo.current?.close()} className="rounded-full p-1.5 text-gris hover:bg-hundido hover:text-tinta" aria-label="Cerrar">
               <Icono nombre="cerrar" className="size-5" />
             </button>
           </header>
           <div>
-            <Etiqueta para={`cierre-${reporteId}`}>¿Qué pasó?</Etiqueta>
+            <Etiqueta para={`cierre-${reporteId}`}>Cómo se resolvió</Etiqueta>
             <input
               id={`cierre-${reporteId}`}
               name="cierre"

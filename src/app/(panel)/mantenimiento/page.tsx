@@ -18,10 +18,10 @@ import { CerrarReporte } from "./CerrarReporte";
 import { EstadoEquipoInsignia, hace, Preventivo, textoPreventivo } from "./piezas";
 import { SeccionesDeMantenimiento } from "./Secciones";
 
-export const metadata: Metadata = { title: "Mantenimiento" };
+export const metadata: Metadata = { title: "Máquinas" };
 export const dynamic = "force-dynamic";
 
-const FILTROS = { todos: "Todos", atencion: "Requieren atención", baja: "Dados de baja" } as const;
+const FILTROS = { todos: "Todas", atencion: "Requieren atención", baja: "Dadas de baja" } as const;
 type Filtro = keyof typeof FILTROS;
 
 interface Props {
@@ -48,19 +48,16 @@ export default async function PaginaMantenimiento({ searchParams }: Props) {
   const areaDe = new Map(t.equipos.map((e) => [e.equipo.id, e.equipo.area]));
 
   const avisos: Record<string, string> = {
-    alta: `${n === "1" ? "1 equipo dado" : `${n} equipos dados`} de alta. Ya puedes registrarles mantenimientos y reportar fallas.`,
-    reportado: "Falla reportada. La administración ya la ve en su lista; gracias por avisar.",
+    alta: n === "1" ? "Máquina agregada." : `${n} máquinas agregadas.`,
+    reportado: "Falla reportada. La administración ya la ve en su lista.",
+    escalado: "Esa falla ya estaba reportada; ahora la máquina quedó marcada fuera de servicio.",
   };
 
   return (
     <div className="pagina">
-      <Encabezado icono="llave"
-        titulo="Mantenimiento"
-        descripcion={
-          gestiona
-            ? "Tus máquinas: cuáles funcionan, cuándo les toca servicio, lo que han costado y lo que se debe."
-            : "Qué máquinas funcionan y cuáles tienen falla. Si algo falla, repórtalo aquí para que la administración lo arregle."
-        }
+      <Encabezado guia="mantenimiento" icono="llave"
+        titulo="Máquinas"
+        descripcion={gestiona ? "Cuáles funcionan, sus fallas, su mantenimiento y lo que se debe." : "Cuáles funcionan y cuáles tienen falla. Si una falla, repórtala."}
         acciones={
           t.equipos.length > 0 && (
             <>
@@ -70,7 +67,7 @@ export default async function PaginaMantenimiento({ searchParams }: Props) {
               </Link>
               {gestiona && (
                 <Link href="/mantenimiento/registrar" className="boton">
-                  <Icono nombre="mas" className="size-4" />
+                  <Icono nombre="llave" className="size-4" />
                   Registrar mantenimiento
                 </Link>
               )}
@@ -86,15 +83,15 @@ export default async function PaginaMantenimiento({ searchParams }: Props) {
           accion={
             gestiona && (
               <div className="flex flex-wrap justify-center gap-2">
-                <Link href="/mantenimiento/equipos/rapido" className="boton">Alta rápida de equipos</Link>
-                <Link href="/mantenimiento/equipos/nuevo" className="boton-secundario">Uno por uno</Link>
+                <Link href="/mantenimiento/equipos/rapido" className="boton">Agregar varias a la vez</Link>
+                <Link href="/mantenimiento/equipos/nuevo" className="boton-secundario">Una por una</Link>
               </div>
             )
           }
         >
           {gestiona
-            ? "Todavía no hay máquinas registradas. Con la alta rápida marcas las que tienes (3 caminadoras, 2 elípticas…) y quedan listas en un minuto."
-            : "Todavía no hay máquinas registradas. Las da de alta la administración."}
+            ? "Todavía no hay máquinas. Marca las que tienes (3 caminadoras, 2 elípticas…) y quedan listas en un minuto."
+            : "Todavía no hay máquinas. Las agrega la administración."}
         </Vacio>
       ) : (
         <>
@@ -131,14 +128,14 @@ export default async function PaginaMantenimiento({ searchParams }: Props) {
                       detalle: gastos.porPagar > 0 ? `Se deben ${formatearDinero(gastos.porPagar)}` : "No se debe nada",
                     },
                   ]
-                : [{ etiqueta: "Equipos registrados", icono: "llave" as const, valor: cuentas.activos, detalle: "Si una falla, repórtala arriba" }]),
+                : [{ etiqueta: "Máquinas", icono: "llave" as const, valor: cuentas.activos, detalle: "Si una falla, repórtala arriba" }]),
             ]}
           />
 
           {(t.reportesAbiertos.length > 0 || preventivos.length > 0) && (
-            <div className={preventivos.length > 0 && t.reportesAbiertos.length > 0 ? "mitades" : ""}>
+            <div className={preventivos.length > 0 && t.reportesAbiertos.length > 0 ? "mitades items-start" : ""}>
               {t.reportesAbiertos.length > 0 && (
-                <Panel titulo="Fallas reportadas" descripcion="Lo que recepción avisó que no funciona bien." icono="alerta">
+                <Panel titulo="Fallas reportadas" icono="alerta">
                   <ul className="-mt-1">
                     {t.reportesAbiertos.map((r) => (
                       <li key={r.id} className="grid gap-1.5 border-b border-dashed border-linea py-3 last:border-0">
@@ -169,7 +166,7 @@ export default async function PaginaMantenimiento({ searchParams }: Props) {
                 </Panel>
               )}
               {preventivos.length > 0 && (
-                <Panel titulo="Preventivos por hacer" descripcion="Vencidos o que tocan en los próximos 14 días." icono="reloj">
+                <Panel titulo="Preventivos por hacer" icono="reloj">
                   <ul className="-mt-1">
                     {preventivos.map((e) => {
                       const p = textoPreventivo(e.preventivo);
@@ -200,8 +197,10 @@ export default async function PaginaMantenimiento({ searchParams }: Props) {
           )}
 
           <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
+            <h2 className="subtitulo">Tus máquinas</h2>
             <Pestanas
-              etiqueta="Filtrar equipos"
+              etiqueta="Filtrar máquinas"
               opciones={(Object.keys(FILTROS) as Filtro[])
                 .filter((f) => f !== "baja" || dadosDeBaja > 0)
                 .map((f) => ({
@@ -211,26 +210,24 @@ export default async function PaginaMantenimiento({ searchParams }: Props) {
                   activa: f === filtro,
                 }))}
             />
+            </div>
             {gestiona && (
-              <div className="flex flex-wrap gap-2">
-                <Link href="/mantenimiento/equipos/rapido" className="boton-secundario boton-chico">Alta rápida</Link>
-                <Link href="/mantenimiento/equipos/nuevo" className="boton-secundario boton-chico">
-                  <Icono nombre="mas" className="size-3.5" />
-                  Nuevo equipo
-                </Link>
-              </div>
+              <Link href="/mantenimiento/equipos/nuevo" className="boton-secundario boton-chico">
+                <Icono nombre="mas" className="size-3.5" />
+                Agregar máquina
+              </Link>
             )}
           </div>
 
           {visibles.length === 0 ? (
-            <Vacio>{filtro === "atencion" ? "Nada pendiente: todas las máquinas funcionan y están al día." : "No hay equipos en esta lista."}</Vacio>
+            <Vacio>{filtro === "atencion" ? "Nada pendiente: todas las máquinas funcionan y están al día." : "No hay máquinas en esta lista."}</Vacio>
           ) : (
             <div className="superficie overflow-x-auto">
               <table className="tabla">
                 <thead>
                   <tr>
-                    <th>Equipo</th>
-                    <th>Área</th>
+                    <th>Máquina</th>
+                    <th>Tipo</th>
                     <th>Estado</th>
                     <th>Próximo preventivo</th>
                     <th>Último servicio</th>

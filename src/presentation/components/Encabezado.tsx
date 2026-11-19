@@ -1,4 +1,6 @@
 import Link from "next/link";
+import type { ClaveGuia } from "../guias";
+import { Guia } from "./Guia";
 import { Icono, type NombreIcono } from "./Icono";
 import { Emblema } from "./pictogramas/Emblema";
 
@@ -13,9 +15,11 @@ interface Props {
   imagen?: React.ReactNode;
   /** Parche de la sección (Tienda, Inventario…): ayuda a saber dónde se está. */
   icono?: NombreIcono;
+  /** Procedimiento de la pantalla («Cómo funciona»), plegado bajo el título. */
+  guia?: ClaveGuia;
 }
 
-export function Encabezado({ titulo, descripcion, volver, etiquetas, acciones, imagen, icono }: Props) {
+export function Encabezado({ titulo, descripcion, volver, etiquetas, acciones, imagen, icono, guia }: Props) {
   return (
     <header className="grid gap-3">
       {volver && (
@@ -37,6 +41,7 @@ export function Encabezado({ titulo, descripcion, volver, etiquetas, acciones, i
         </div>
         {acciones && <div className="flex flex-wrap gap-2">{acciones}</div>}
       </div>
+      {guia && <Guia clave={guia} />}
     </header>
   );
 }

@@ -19,8 +19,7 @@ export default async function PaginaReportar({ searchParams }: { searchParams: P
     <div className="pagina max-w-3xl">
       <Encabezado
         titulo="Reportar una falla"
-        volver={desdeFicha ? { href: `/mantenimiento/equipos/${equipo}`, texto: "Equipo" } : { href: "/mantenimiento", texto: "Mantenimiento" }}
-        descripcion="Cuéntale a la administración qué máquina falla y qué le pasa. Le aparece en su lista de pendientes."
+        volver={desdeFicha ? { href: `/mantenimiento/equipos/${equipo}`, texto: "Máquina" } : { href: "/mantenimiento", texto: "Máquinas" }}
       />
       {activos.length === 0 ? (
         <Vacio accion={<Link href="/mantenimiento" className="boton-secundario">Volver</Link>}>Todavía no hay máquinas registradas.</Vacio>

@@ -39,6 +39,31 @@ export class DarDeBajaSocio {
   }
 }
 
+/**
+ * Borra a un socio para siempre. Si nunca pagó, desaparece por completo. Si
+ * ya pagó, sus datos personales se borran (nombre, celular, foto, notas y
+ * huellas) pero sus pagos se quedan en los cortes como «Socio eliminado»,
+ * para que la caja de esos días siga cuadrando. No se puede deshacer.
+ */
+export class EliminarSocioDefinitivo {
+  constructor(
+    private readonly socios: SocioRepository,
+    private readonly fotos: AlmacenFotos,
+  ) {}
+
+  async ejecutar(socioId: string, confirmacion: string): Promise<{ nombre: string; resultado: "completo" | "anonimo" }> {
+    const socio = await this.socios.obtenerPorId(socioId);
+    if (!socio) throw new NoEncontrado("El socio");
+    // Se escribe la palabra ELIMINAR: así nadie lo borra por un clic accidental.
+    if (confirmacion.trim().toUpperCase() !== "ELIMINAR") {
+      throw new ErrorDeDominio("Para confirmar, escribe la palabra ELIMINAR.", "confirmacion");
+    }
+    const resultado = await this.socios.eliminarDefinitivo(socio.id);
+    if (socio.foto) await this.fotos.borrar(socio.foto).catch(() => undefined);
+    return { nombre: `${socio.nombre} ${socio.apellidos}`, resultado };
+  }
+}
+
 export class ReactivarSocio {
   constructor(private readonly socios: SocioRepository) {}
 

@@ -234,9 +234,18 @@ export interface ResultadoDelConteo {
   productosConFaltante: number;
 }
 
+/** Un producto contado: lo que hay en el anaquel y la existencia que mostraba la pantalla al contarlo. */
+export interface ConteoDeProducto {
+  productoId: string;
+  contado: number;
+  esperado: number;
+}
+
 /**
  * Se cuenta el anaquel y se escribe lo que hay; el programa calcula las
- * diferencias y ajusta todo de una vez.
+ * diferencias y ajusta todo de una vez. La diferencia se mide contra lo que
+ * mostraba la pantalla, no contra la existencia al guardar: si mientras se
+ * contaba se vendió o llegó algo, ese movimiento se respeta.
  */
 export class ContarInventario {
   constructor(
@@ -245,19 +254,23 @@ export class ContarInventario {
     private readonly reloj: Reloj,
   ) {}
 
-  async ejecutar(conteos: { productoId: string; contado: number }[], nota: string | null): Promise<ResultadoDelConteo> {
+  async ejecutar(conteos: ConteoDeProducto[], nota: string | null): Promise<ResultadoDelConteo> {
     const fecha = this.reloj.hoy();
     const ajustes: DatosNuevoMovimiento[] = [];
     let faltanteImporte = 0;
     let sobranteImporte = 0;
     let productosConFaltante = 0;
-    for (const { productoId, contado } of conteos) {
+    for (const { productoId, contado, esperado } of conteos) {
       const producto = await this.productos.obtenerPorId(productoId);
       if (!producto) throw new ErrorDeDominio("Uno de los productos ya no existe. Vuelve a abrir la pantalla.");
       const error = revisarEntero(contado, { min: 0, max: MAXIMO_GRAMOS, que: `Lo contado de ${producto.nombre}` });
       if (error) throw new ErrorDeDominio(error);
-      const diferencia = contado - producto.stock;
+      if (!Number.isInteger(esperado) || esperado < 0) throw new ErrorDeDominio("La pantalla del conteo está desactualizada. Vuelve a abrirla.");
+      const diferencia = contado - esperado;
       if (diferencia === 0) continue;
+      if (producto.stock + diferencia < 0) {
+        throw new ErrorDeDominio(`${producto.nombre} cambió mientras contabas y ya no cuadra. Vuelve a contarlo (recarga la pantalla).`);
+      }
       const importe = Math.abs(diferencia) * precioPorUnidad(producto);
       if (diferencia < 0) {
         faltanteImporte += importe;

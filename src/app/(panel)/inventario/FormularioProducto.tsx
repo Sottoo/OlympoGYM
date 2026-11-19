@@ -29,13 +29,18 @@ const TAMANOS = [
   { texto: "10 lb", gramos: 4536 },
 ];
 
-/** Alta o edición de un producto. El stock no se edita aquí: cambia con movimientos. */
+/**
+ * Alta o edición de un producto. El stock no se edita aquí: cambia con movimientos.
+ * Si ya se vendió, su nombre, forma de venta y porción quedan fijos (los cortes los usan).
+ */
 export function FormularioProducto({
   producto,
   codigoInicial,
+  vendido = false,
 }: {
   producto?: DatosProducto & { id: string; foto?: string | null };
   codigoInicial?: string;
+  vendido?: boolean;
 }) {
   const [estado, accion] = useActionState(producto ? accionEditarProducto : accionCrearProducto, estadoInicial);
   const v = estado.valores ?? (producto ? aTexto(producto) : { stockMinimo: "3", stockInicial: "", codigo: codigoInicial ?? "" });
@@ -105,14 +110,17 @@ export function FormularioProducto({
               name="nombre"
               required
               maxLength={LIMITES.nombreProducto}
-              className="campo"
+              className={`campo ${vendido ? "text-gris" : ""}`}
               defaultValue={v.nombre}
               placeholder="Ej. Proteína whey 2 lb, vainilla"
               data-regla="texto:2"
               data-falta="Escribe el nombre del producto."
+              readOnly={vendido}
               onChange={(e) => setNombreVista(e.target.value)}
             />
-            <Ayuda para="nombre">Marca, presentación y sabor: así lo encuentra recepción.</Ayuda>
+            <Ayuda para="nombre">
+              {vendido ? "Ya se vendió: el nombre no se cambia para no alterar los cortes." : "Marca, presentación y sabor: así lo encuentra recepción."}
+            </Ayuda>
           </div>
           <div>
             <label htmlFor="categoria" className="etiqueta">Categoría</label>
@@ -153,7 +161,7 @@ export function FormularioProducto({
               fotoActual={enlaceDeFoto(producto?.foto)}
               alt="Foto del producto"
               vacio={<Emblema pictograma={dibujo.pictograma} hilo={dibujo.hilo} tamano="xl" key={`${dibujo.pictograma}-${dibujo.hilo}`} />}
-              ayuda="Así la reconoce recepción en la Tienda. Sin foto se ve con su parche bordado, como el de aquí."
+              ayuda="Así la reconoce recepción en la Tienda. Sin foto se ve con su dibujo, como el de aquí."
             />
           </fieldset>
         </div>
@@ -161,12 +169,24 @@ export function FormularioProducto({
         <div className="border-t border-linea pt-6">
           <fieldset>
             <legend className="rotulo mb-4">Cómo se vende</legend>
-            <SelectorSegmentado nombre="unidad" opciones={FORMAS} valor={unidad} alCambiar={(u) => cambiarForma(u as UnidadProducto)} />
-            <p className="mensaje-campo">
-              {granel
-                ? "Se vende por porción (scoop, servicio) o por gramos exactos. Tú cuentas en botes y el sistema lleva los gramos."
-                : "Botellas, barras, shakers… La existencia se cuenta en piezas."}
-            </p>
+            {vendido ? (
+              <>
+                <input type="hidden" name="unidad" value={unidad} />
+                <p className="font-semibold">{FORMAS[unidad]}</p>
+                <p className="mensaje-campo">
+                  Ya se vendió: su forma de venta{granel ? " y su porción" : ""} no se cambian para no alterar los cortes. Si cambió, desactívalo y crea uno nuevo.
+                </p>
+              </>
+            ) : (
+              <>
+                <SelectorSegmentado nombre="unidad" opciones={FORMAS} valor={unidad} alCambiar={(u) => cambiarForma(u as UnidadProducto)} />
+                <p className="mensaje-campo">
+                  {granel
+                    ? "Se vende por porción (scoop, servicio) o por gramos exactos. Tú cuentas en botes y el sistema lleva los gramos."
+                    : "Botellas, barras, shakers… La existencia se cuenta en piezas."}
+                </p>
+              </>
+            )}
             {producto && unidad !== producto.unidad && <Ayuda para="unidad">Solo se puede cambiar si su existencia está en 0.</Ayuda>}
           </fieldset>
 
@@ -178,27 +198,32 @@ export function FormularioProducto({
                   id="porcionNombre"
                   name="porcionNombre"
                   maxLength={20}
-                  className="campo"
+                  className={`campo ${vendido ? "text-gris" : ""}`}
                   defaultValue={v.porcionNombre || "scoop"}
                   placeholder="scoop"
                   data-filtro="nombre"
+                  readOnly={vendido}
                   onChange={(e) => setNombrePorcion(e.target.value || "porción")}
                 />
                 <Ayuda para="porcionNombre">Scoop, servicio, medida…</Ayuda>
               </div>
               <div>
                 <Etiqueta para="porcionGramos">Gramos por {nombrePorcion}</Etiqueta>
-                <CampoNumero
-                  id="porcionGramos"
-                  nombre="porcionGramos"
-                  min={1}
-                  max={1000}
-                  requerido
-                  unidad="g"
-                  valor={porcion}
-                  alCambiar={setPorcion}
-                  atributos={{ "data-que": "La porción", "data-falta": "¿Cuántos gramos lleva?" }}
-                />
+                {vendido ? (
+                  <input id="porcionGramos" name="porcionGramos" readOnly value={porcion} className="campo tabular-nums text-gris" />
+                ) : (
+                  <CampoNumero
+                    id="porcionGramos"
+                    nombre="porcionGramos"
+                    min={1}
+                    max={1000}
+                    requerido
+                    unidad="g"
+                    valor={porcion}
+                    alCambiar={setPorcion}
+                    atributos={{ "data-que": "La porción", "data-falta": "¿Cuántos gramos lleva?" }}
+                  />
+                )}
                 <Ayuda para="porcionGramos">Un scoop de proteína ≈ 30 g; de creatina ≈ 5 g.</Ayuda>
               </div>
               <div>

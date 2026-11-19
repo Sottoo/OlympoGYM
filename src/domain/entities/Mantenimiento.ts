@@ -57,6 +57,8 @@ export interface Mantenimiento {
   id: string;
   equipoId: string;
   equipoNombre: string;
+  /** La máquina se eliminó: su historial se conserva, pero ya no tiene ficha. */
+  equipoEliminado: boolean;
   fecha: FechaISO;
   tipo: TipoMantenimiento;
   descripcion: string;

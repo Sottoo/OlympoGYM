@@ -9,7 +9,7 @@ import { Encabezado } from "@/presentation/components/Encabezado";
 import { Icono } from "@/presentation/components/Icono";
 import { Indicadores } from "@/presentation/components/Indicadores";
 import { compararCon } from "@/presentation/components/Marcador";
-import { diaDeLaSemana, fechaLocal, formatearDinero, formatearFechaLarga, formatearHora } from "@/shared/formato";
+import { diaDeLaSemana, fechaLocal, formatearDinero, formatearFechaLarga, formatearHora, horaLocal } from "@/shared/formato";
 import { describirPartida } from "@/domain/entities/Venta";
 import { PuntoDeVenta } from "./PuntoDeVenta";
 
@@ -38,6 +38,20 @@ export default async function PaginaVentas({ searchParams }: { searchParams: Pro
     veOtrosDias ? casos.obtenerCorteDelDia.ejecutar(sumarDias(dia, -7)) : null,
   ]);
   const esHoy = dia === hoy;
+  // Hoy el día va a medias: se compara con lo que se llevaba la semana pasada a esta misma hora
+  // (como en Asistencias). Lo capturado otro día (cobros atrasados) no tiene hora real y no cuenta.
+  const horaActual = horaLocal(entorno.zonaHoraria);
+  const antesDeEstaHora = (creadoEn: string) =>
+    fechaLocal(creadoEn, entorno.zonaHoraria) === corteSemanaPasada?.fecha && horaLocal(entorno.zonaHoraria, new Date(creadoEn)) <= horaActual;
+  const totalSemanaPasada = !corteSemanaPasada
+    ? 0
+    : esHoy
+      ? Math.round(
+          (corteSemanaPasada.ventas.filter((v) => antesDeEstaHora(v.creadoEn)).reduce((t, v) => t + v.total, 0) +
+            corteSemanaPasada.cobros.filter((c) => antesDeEstaHora(c.creadoEn)).reduce((t, c) => t + c.monto, 0)) *
+            100,
+        ) / 100
+      : corteSemanaPasada.total;
   const efectivoCobrado = corte.porMetodo.efectivo.tienda + corte.porMetodo.efectivo.membresias;
   const enCaja = Math.round((efectivoCobrado - salidas.efectivo) * 100) / 100;
 
@@ -61,7 +75,7 @@ export default async function PaginaVentas({ searchParams }: { searchParams: Pro
 
   return (
     <div className="pagina">
-      <Encabezado icono="ventas" titulo="Tienda" descripcion="Cobra productos y revisa el corte de caja del día." />
+      <Encabezado guia="tienda" icono="ventas" titulo="Tienda" descripcion="Cobra productos y revisa el corte de caja del día." />
 
       {vendibles.length === 0 ? (
         <p className="superficie px-5 py-8 text-center text-gris">
@@ -121,8 +135,11 @@ export default async function PaginaVentas({ searchParams }: { searchParams: Pro
               detalle: `Tienda ${formatearDinero(corte.totalTienda)} · Membresías ${formatearDinero(corte.totalMembresias)}`,
               destacada: true,
               comparacion:
-                corteSemanaPasada && corteSemanaPasada.total > 0
-                  ? compararCon(corte.total, corteSemanaPasada.total, { porcentaje: true, contra: `vs. el ${diaDeLaSemana(dia)} pasado (${formatearDinero(corteSemanaPasada.total)})` })
+                totalSemanaPasada > 0
+                  ? compararCon(corte.total, totalSemanaPasada, {
+                      porcentaje: true,
+                      contra: `vs. el ${diaDeLaSemana(dia)} pasado${esHoy ? " a esta hora" : ""} (${formatearDinero(totalSemanaPasada)})`,
+                    })
                   : undefined,
             },
             ...(Object.keys(METODOS_PAGO) as MetodoPago[]).map((m) => {

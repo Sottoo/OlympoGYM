@@ -11,7 +11,7 @@ const PRINCIPALES: { href: string; texto: string; icono: NombreIcono }[] = [
   { href: "/socios", texto: "Socios", icono: "socios" },
   { href: "/ventas", texto: "Tienda", icono: "ventas" },
   { href: "/inventario", texto: "Inventario", icono: "inventario" },
-  { href: "/mantenimiento", texto: "Mantenimiento", icono: "llave" },
+  { href: "/mantenimiento", texto: "Máquinas", icono: "llave" },
   { href: "/planes", texto: "Planes", icono: "planes" },
   { href: "/metricas", texto: "Métricas", icono: "metricas" },
 ];

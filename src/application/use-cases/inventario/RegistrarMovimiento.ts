@@ -13,6 +13,11 @@ export interface EntradaMovimiento {
    * ajuste: cuántas piezas se contaron físicamente en el anaquel.
    */
   cantidad: number;
+  /**
+   * Solo ajuste: la existencia que mostraba la pantalla al contar. Se ajusta
+   * por la diferencia contra ella, para no deshacer una venta hecha mientras tanto.
+   */
+  esperado?: number | null;
   nota: string | null;
 }
 
@@ -44,8 +49,15 @@ export class RegistrarMovimiento {
       if (!nota) throw new ErrorDeDominio("Indica el motivo de la merma (caducado, dañado, extraviado…).", "nota");
       cambio = -cantidad;
     } else {
-      cambio = cantidad - producto.stock;
-      if (cambio === 0) throw new ErrorDeDominio("El conteo coincide con el stock registrado; no hay nada que ajustar.", "cantidad");
+      const { esperado } = entrada;
+      if (typeof esperado !== "number" || !Number.isInteger(esperado) || esperado < 0) {
+        throw new ErrorDeDominio("La ficha del producto está desactualizada. Recarga la pantalla y vuelve a escribir lo contado.");
+      }
+      cambio = cantidad - esperado;
+      if (cambio === 0) throw new ErrorDeDominio("El conteo coincide con la existencia registrada; no hay nada que ajustar.", "cantidad");
+      if (producto.stock + cambio < 0) {
+        throw new ErrorDeDominio("La existencia cambió mientras contabas (hubo una venta o merma). Recarga la pantalla y vuelve a contar.", "cantidad");
+      }
     }
 
     return this.inventario.registrarMovimiento({

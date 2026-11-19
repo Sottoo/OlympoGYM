@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { MetodoPago } from "@/domain/entities/Pago";
 import { casosDeUso } from "@/infrastructure/contenedor";
-import { type EstadoFormulario, fallo, texto } from "@/presentation/acciones/estadoFormulario";
+import { type EstadoFormulario, fallo, mensajeDeError, texto } from "@/presentation/acciones/estadoFormulario";
 
 const datosSocio = (formData: FormData) => ({
   nombre: texto(formData, "nombre"),
@@ -45,7 +45,8 @@ export async function accionRegistrarSocio(_: EstadoFormulario, formData: FormDa
       metodoPago: texto(formData, "metodoPago") as MetodoPago,
       monto: montoDe(formData),
       nota: texto(formData, "nota"),
-    });
+      fecha: texto(formData, "fecha") || null,
+    }, { esOtraPersona: texto(formData, "otraPersona") === "1" });
     socioId = resultado.socio.id;
     esVisita = resultado.esVisita;
   } catch (error) {
@@ -113,10 +114,79 @@ export async function accionAsignarPlan(_: EstadoFormulario, formData: FormData)
       metodoPago: texto(formData, "metodoPago") as MetodoPago,
       monto: montoDe(formData),
       nota: texto(formData, "nota"),
+      fecha: texto(formData, "fecha") || null,
     });
   } catch (error) {
     return fallo(error, formData);
   }
   actualizarVistas(socioId);
   redirect(`/socios/${socioId}?aviso=pagado`);
+}
+
+/** Corrige el plan (y el monto) de la membresía más reciente, cuando se registró la equivocada. */
+export async function accionCorregirMembresia(_: EstadoFormulario, formData: FormData): Promise<EstadoFormulario> {
+  const socioId = texto(formData, "socioId");
+  try {
+    await (await casosDeUso()).corregirMembresia.ejecutar({
+      suscripcionId: texto(formData, "suscripcionId"),
+      planId: texto(formData, "planId"),
+      monto: montoDe(formData),
+      metodoPago: texto(formData, "metodoPago") as MetodoPago,
+    });
+  } catch (error) {
+    return fallo(error, formData);
+  }
+  actualizarVistas(socioId);
+  revalidatePath("/ventas");
+  redirect(`/socios/${socioId}?aviso=corregido`);
+}
+
+/** Cancela una membresía cobrada por error (la próxima o la de hoy) junto con su pago. */
+export async function accionCancelarMembresia(socioId: string, suscripcionId: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    await (await casosDeUso()).cancelarMembresia.ejecutar(suscripcionId);
+  } catch (error) {
+    return { ok: false, error: mensajeDeError(error) };
+  }
+  actualizarVistas(socioId);
+  revalidatePath("/ventas");
+  return { ok: true };
+}
+
+/** Borra al socio para siempre (sus pagos se quedan en los cortes como «Socio eliminado»). */
+export async function accionEliminarSocio(_: EstadoFormulario, formData: FormData): Promise<EstadoFormulario> {
+  const socioId = texto(formData, "socioId");
+  let nombre: string;
+  try {
+    ({ nombre } = await (await casosDeUso()).eliminarSocioDefinitivo.ejecutar(socioId, texto(formData, "confirmacion")));
+  } catch (error) {
+    return fallo(error, formData);
+  }
+  revalidatePath("/socios");
+  revalidatePath("/panel");
+  revalidatePath("/ventas");
+  redirect(`/socios?filtro=bajas&eliminado=${encodeURIComponent(nombre)}`);
+}
+
+/** Mientras se inscribe: ¿ya hay alguien con ese celular o ese nombre? (para no registrarlo dos veces). */
+export async function accionBuscarParecidos(datos: { nombre: string; apellidos: string; telefono: string }, excluirId?: string) {
+  try {
+    return await (await casosDeUso()).buscarSociosParecidos.ejecutar(datos, excluirId);
+  } catch {
+    return [];
+  }
+}
+
+/** Une un socio registrado dos veces: todo pasa a este y el otro registro se borra. */
+export async function accionUnirSocios(_: EstadoFormulario, formData: FormData): Promise<EstadoFormulario> {
+  const socioId = texto(formData, "socioId");
+  let unido: string;
+  try {
+    ({ unido } = await (await casosDeUso()).unirSocios.ejecutar(socioId, texto(formData, "duplicado")));
+  } catch (error) {
+    return fallo(error, formData);
+  }
+  actualizarVistas(socioId);
+  revalidatePath("/ventas");
+  redirect(`/socios/${socioId}?aviso=unido&de=${encodeURIComponent(unido)}`);
 }

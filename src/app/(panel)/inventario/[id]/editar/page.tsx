@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 export default async function PaginaEditarProducto({ params }: { params: Promise<{ id: string }> }) {
   await exigirPermiso("inventario.gestionar");
   const { id } = await params;
-  const { producto } = await (await casosDeUso()).obtenerDetalleProducto.ejecutar(id).catch((e) => {
+  const { producto, tieneVentas } = await (await casosDeUso()).obtenerDetalleProducto.ejecutar(id).catch((e) => {
     if (e instanceof NoEncontrado) notFound();
     throw e;
   });
@@ -20,7 +20,7 @@ export default async function PaginaEditarProducto({ params }: { params: Promise
   return (
     <div className="pagina mx-auto w-full max-w-3xl">
       <Encabezado titulo="Editar producto" volver={{ href: `/inventario/${id}`, texto: producto.nombre }} />
-      <FormularioProducto producto={producto} />
+      <FormularioProducto producto={producto} vendido={tieneVentas} />
     </div>
   );
 }

@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
+import type { Parecido } from "@/application/use-cases/socios/Duplicados";
 import type { DatosNuevoSocio } from "@/domain/entities/Socio";
 import { formatearCelularParcial, LIMITES, normalizarCelular } from "@/domain/shared/reglas";
 import { estadoInicial } from "@/presentation/acciones/estadoFormulario";
@@ -10,7 +11,8 @@ import { CampoFecha } from "@/presentation/components/formulario/CampoFecha";
 import { CampoFoto } from "@/presentation/components/formulario/CampoFoto";
 import { AvisosDelFormulario, Ayuda, Etiqueta, Formulario } from "@/presentation/components/formulario/Formulario";
 import { formatearDinero } from "@/shared/formato";
-import { accionEditarSocio, accionRegistrarSocio, accionRevisarCelular } from "./acciones";
+import { accionBuscarParecidos, accionEditarSocio, accionRegistrarSocio, accionRevisarCelular } from "./acciones";
+import { AvisoParecidos } from "./AvisoParecidos";
 import { CamposDeCobro, type OpcionPlan } from "./CamposDeCobro";
 
 interface Props {
@@ -18,8 +20,8 @@ interface Props {
   socio?: DatosNuevoSocio & { id: string };
   /** Enlace temporal de la foto actual, si tiene. */
   fotoUrl?: string | null;
-  /** Al inscribir: los planes que se pueden elegir y si se permite cambiar el monto. */
-  inscripcion?: { planes: OpcionPlan[]; puedeCambiarMonto: boolean };
+  /** Al inscribir: los planes que se pueden elegir y si se permite cambiar el monto o la fecha del cobro. */
+  inscripcion?: { planes: OpcionPlan[]; puedeCambiarMonto: boolean; puedeCambiarFecha: boolean };
 }
 
 export function FormularioSocio({ socio, fotoUrl, inscripcion }: Props) {
@@ -27,11 +29,35 @@ export function FormularioSocio({ socio, fotoUrl, inscripcion }: Props) {
   const v = estado.valores ?? (socio ? aTexto(socio) : {});
   const [plan, setPlan] = useState<OpcionPlan | undefined>(() => inscripcion?.planes.find((p) => p.id === v.planId) ?? inscripcion?.planes[0]);
   const [remotas] = useState(() => ({ telefono: (valor: string) => accionRevisarCelular(valor, socio?.id) }));
+  // Al inscribir: si el celular o el nombre ya son de alguien, se avisa antes de cobrar.
+  const [parecidos, setParecidos] = useState<Parecido[]>([]);
+  const [otraPersona, setOtraPersona] = useState(estado.valores?.otraPersona === "1");
+  const consulta = useRef(0);
+  async function revisarParecidos(e: React.FocusEvent<HTMLInputElement>) {
+    if (socio || !e.currentTarget.form) return;
+    const datos = new FormData(e.currentTarget.form);
+    const leer = (k: string) => String(datos.get(k) ?? "");
+    const turno = ++consulta.current;
+    const encontrados = await accionBuscarParecidos({ nombre: leer("nombre"), apellidos: leer("apellidos"), telefono: leer("telefono") });
+    if (turno === consulta.current) setParecidos(encontrados);
+  }
+
+  // Si el servidor dijo que ya está inscrito (p. ej. se guardó sin salir del campo), se muestra quién es.
+  useEffect(() => {
+    const v = estado.valores;
+    if (socio || !v || !estado.error) return;
+    const turno = ++consulta.current;
+    void accionBuscarParecidos({ nombre: v.nombre ?? "", apellidos: v.apellidos ?? "", telefono: v.telefono ?? "" }).then((p) => {
+      if (turno === consulta.current) setParecidos(p);
+    });
+  }, [estado, socio]);
 
   return (
     <Formulario action={accion} estado={estado} remotas={remotas} avisosManuales className="superficie">
       {socio && <input type="hidden" name="socioId" value={socio.id} />}
       <div className="grid gap-6 p-5 sm:p-7">
+        {/* Hasta arriba: así no se mueve cuando aparecen o se quitan los avisos de los campos. */}
+        {!socio && <AvisoParecidos parecidos={parecidos} otraPersona={otraPersona} alMarcar={setOtraPersona} />}
         <AvisosDelFormulario />
         <fieldset>
           <legend className="rotulo mb-4">Datos personales</legend>
@@ -52,6 +78,7 @@ export function FormularioSocio({ socio, fotoUrl, inscripcion }: Props) {
                 data-filtro="nombre"
                 data-formato="nombre"
                 data-falta="Escribe el nombre."
+                onBlur={revisarParecidos}
               />
               <Ayuda para="nombre">Como aparece en su identificación.</Ayuda>
             </div>
@@ -71,6 +98,7 @@ export function FormularioSocio({ socio, fotoUrl, inscripcion }: Props) {
                 data-filtro="nombre"
                 data-formato="nombre"
                 data-falta="Escribe los apellidos."
+                onBlur={revisarParecidos}
               />
               <Ayuda para="apellidos">Paterno y materno.</Ayuda>
             </div>
@@ -103,6 +131,7 @@ export function FormularioSocio({ socio, fotoUrl, inscripcion }: Props) {
                 data-regla="telefono"
                 data-filtro="telefono"
                 data-falta="Escribe el celular."
+                onBlur={revisarParecidos}
               />
               <Ayuda para="telefono">10 dígitos, sin +52. Con él también se le busca en el mostrador.</Ayuda>
             </div>
@@ -140,7 +169,7 @@ export function FormularioSocio({ socio, fotoUrl, inscripcion }: Props) {
             <fieldset>
               <legend className="rotulo mb-1">Plan y pago</legend>
               <p className="mb-4 text-[0.84rem] text-gris">Todo socio se inscribe con su plan: sale de recepción con su membresía activa.</p>
-              <CamposDeCobro planes={inscripcion.planes} puedeCambiarMonto={inscripcion.puedeCambiarMonto} valores={estado.valores} alElegir={setPlan} />
+              <CamposDeCobro planes={inscripcion.planes} puedeCambiarMonto={inscripcion.puedeCambiarMonto} puedeCambiarFecha={inscripcion.puedeCambiarFecha} valores={estado.valores} alElegir={setPlan} />
             </fieldset>
           </div>
         )}

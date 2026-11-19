@@ -31,15 +31,18 @@ export function FormularioEquipo({ equipo, hoy }: { equipo?: DatosEquipo & { id:
     if (!tocoFrecuencia) setFrecuencia(FRECUENCIA_SUGERIDA[nueva as AreaEquipo]);
   }
 
+  // Los datos opcionales van plegados; al editar, se abren si ya tiene alguno.
+  const tieneDetalles = Boolean(v.marca || v.modelo || v.numeroSerie || v.fechaCompra || v.servicioBase || v.nota);
+
   return (
     <Formulario action={accion} estado={estado} avisosManuales className="superficie">
       {equipo && <input type="hidden" name="equipoId" value={equipo.id} />}
       <div className="space-y-6 p-5 sm:p-7">
         <AvisosDelFormulario />
 
-        <div className="grid gap-5 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+        <div className="grid gap-5 sm:grid-cols-[minmax(0,3fr)_minmax(0,2fr)_minmax(0,2fr)]">
           <div>
-            <Etiqueta para="nombre">Nombre del equipo</Etiqueta>
+            <Etiqueta para="nombre">Nombre</Etiqueta>
             <input
               id="nombre"
               name="nombre"
@@ -49,12 +52,12 @@ export function FormularioEquipo({ equipo, hoy }: { equipo?: DatosEquipo & { id:
               defaultValue={v.nombre}
               placeholder="Ej. Caminadora 1"
               data-regla="texto:2"
-              data-falta="Escribe el nombre del equipo."
+              data-falta="Escribe el nombre de la máquina."
             />
-            <Ayuda para="nombre">Si tienes varias iguales, numéralas: así recepción reporta la correcta.</Ayuda>
+            <Ayuda para="nombre" />
           </div>
           <div>
-            <label htmlFor="area" className="etiqueta">Área</label>
+            <label htmlFor="area" className="etiqueta">Tipo</label>
             <Selector
               id="area"
               nombre="area"
@@ -63,83 +66,74 @@ export function FormularioEquipo({ equipo, hoy }: { equipo?: DatosEquipo & { id:
               opciones={Object.entries(AREAS_EQUIPO).map(([valor, texto]) => ({ valor, texto }))}
             />
           </div>
-        </div>
-
-        <div className="grid gap-5 sm:grid-cols-3">
           <div>
-            <Etiqueta para="marca" opcional>Marca</Etiqueta>
-            <input id="marca" name="marca" maxLength={LIMITES_MANTENIMIENTO.marca} className="campo" defaultValue={v.marca} placeholder="Ej. Life Fitness" />
-            <Ayuda para="marca" />
-          </div>
-          <div>
-            <Etiqueta para="modelo" opcional>Modelo</Etiqueta>
-            <input id="modelo" name="modelo" maxLength={LIMITES_MANTENIMIENTO.marca} className="campo" defaultValue={v.modelo} placeholder="Ej. T5" />
-            <Ayuda para="modelo" />
-          </div>
-          <div>
-            <Etiqueta para="numeroSerie" opcional>Número de serie</Etiqueta>
-            <input id="numeroSerie" name="numeroSerie" maxLength={LIMITES_MANTENIMIENTO.serie} className="campo uppercase" defaultValue={v.numeroSerie} autoComplete="off" />
-            <Ayuda para="numeroSerie">Viene en la placa del equipo; sirve para la garantía.</Ayuda>
-          </div>
-          <div>
-            <Etiqueta para="fechaCompra" opcional>Fecha de compra</Etiqueta>
-            <CampoFecha id="fechaCompra" nombre="fechaCompra" max={hoy} valorInicial={v.fechaCompra} />
-            <Ayuda para="fechaCompra" />
+            <label htmlFor="frecuenciaMeses" className="etiqueta">Servicio preventivo</label>
+            <Selector
+              id="frecuenciaMeses"
+              nombre="frecuenciaMeses"
+              valor={frecuencia}
+              alCambiar={(f) => {
+                setFrecuencia(f);
+                setTocoFrecuencia(true);
+              }}
+              opciones={FRECUENCIAS.map((f) => ({
+                valor: f,
+                texto: f ? describirFrecuencia(Number(f)) : "Sin programa",
+                detalle: f === FRECUENCIA_SUGERIDA[area] && f ? "Lo recomendado para este tipo" : !f ? "No avisar" : undefined,
+              }))}
+            />
+            {proximo && <p className="mensaje-campo">Siguiente: {describirFecha(proximo)}</p>}
           </div>
         </div>
 
-        <div className="border-t border-linea pt-6">
-          <p className="rotulo mb-4">Mantenimiento preventivo</p>
-          <div className="grid gap-5 sm:grid-cols-2">
+        <details className="group/datos rounded-[12px] border border-dashed border-linea-fuerte" open={tieneDetalles}>
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-[0.9rem] font-semibold [&::-webkit-details-marker]:hidden">
+            <span>
+              Más datos <span className="font-normal text-gris">(opcional): marca, modelo, serie, compra, último servicio</span>
+            </span>
+            <span aria-hidden className="text-gris transition-transform group-open/datos:rotate-90">›</span>
+          </summary>
+          <div className="grid gap-5 border-t border-dashed border-linea px-4 pt-4 pb-5 sm:grid-cols-3">
             <div>
-              <label htmlFor="frecuenciaMeses" className="etiqueta">¿Cada cuánto le toca servicio?</label>
-              <Selector
-                id="frecuenciaMeses"
-                nombre="frecuenciaMeses"
-                valor={frecuencia}
-                alCambiar={(f) => {
-                  setFrecuencia(f);
-                  setTocoFrecuencia(true);
-                }}
-                opciones={FRECUENCIAS.map((f) => ({
-                  valor: f,
-                  texto: f ? describirFrecuencia(Number(f)) : "Sin programa",
-                  detalle: f === FRECUENCIA_SUGERIDA[area] && f ? "Lo que suele recomendarse para este tipo" : !f ? "No avisar; solo registrar cuando se haga" : undefined,
-                }))}
-              />
-              <Ayuda para="frecuenciaMeses">Te avisamos en Hoy cuando ya le toque.</Ayuda>
+              <Etiqueta para="marca" opcional>Marca</Etiqueta>
+              <input id="marca" name="marca" maxLength={LIMITES_MANTENIMIENTO.marca} className="campo" defaultValue={v.marca} placeholder="Ej. Life Fitness" />
+              <Ayuda para="marca" />
+            </div>
+            <div>
+              <Etiqueta para="modelo" opcional>Modelo</Etiqueta>
+              <input id="modelo" name="modelo" maxLength={LIMITES_MANTENIMIENTO.marca} className="campo" defaultValue={v.modelo} placeholder="Ej. T5" />
+              <Ayuda para="modelo" />
+            </div>
+            <div>
+              <Etiqueta para="numeroSerie" opcional>Número de serie</Etiqueta>
+              <input id="numeroSerie" name="numeroSerie" maxLength={LIMITES_MANTENIMIENTO.serie} className="campo uppercase" defaultValue={v.numeroSerie} autoComplete="off" />
+              <Ayuda para="numeroSerie" />
+            </div>
+            <div>
+              <Etiqueta para="fechaCompra" opcional>Fecha de compra</Etiqueta>
+              <CampoFecha id="fechaCompra" nombre="fechaCompra" max={hoy} valorInicial={v.fechaCompra} />
+              <Ayuda para="fechaCompra" />
             </div>
             {frecuencia && (
               <div>
                 <Etiqueta para="servicioBase" opcional>
-                  ¿Cuándo fue su último servicio?
+                  Último servicio
                 </Etiqueta>
-                <CampoFecha
-                  id="servicioBase"
-                  nombre="servicioBase"
-                  max={hoy}
-                  valor={base}
-                  alCambiar={setBase}
-                  describir={() => (proximo ? `Siguiente preventivo: ${describirFecha(proximo)}` : "")}
-                />
-                {!base && proximo && (
-                  <p className="mensaje-campo">Si no lo sabes, déjalo vacío: se cuenta desde hoy (siguiente: {describirFecha(proximo)}).</p>
-                )}
-                <Ayuda para="servicioBase" />
+                <CampoFecha id="servicioBase" nombre="servicioBase" max={hoy} valor={base} alCambiar={setBase} />
+                <Ayuda para="servicioBase">{base ? "" : "Si no lo sabes, se cuenta desde hoy."}</Ayuda>
               </div>
             )}
+            <div className={frecuencia ? "" : "sm:col-span-2"}>
+              <Etiqueta para="nota" opcional>Nota</Etiqueta>
+              <input id="nota" name="nota" maxLength={LIMITES.nota} data-contador="" className="campo" defaultValue={v.nota} placeholder="Ej. garantía hasta marzo 2027" />
+              <Ayuda para="nota" maximo={LIMITES.nota} />
+            </div>
           </div>
-        </div>
-
-        <div>
-          <Etiqueta para="nota" opcional>Nota</Etiqueta>
-          <input id="nota" name="nota" maxLength={LIMITES.nota} data-contador="" className="campo" defaultValue={v.nota} placeholder="Ej. garantía hasta marzo 2027, técnico de la marca" />
-          <Ayuda para="nota" maximo={LIMITES.nota} />
-        </div>
+        </details>
       </div>
 
       <div className="flex flex-wrap items-center gap-3 border-t border-linea bg-hundido/60 px-5 py-4 sm:px-7">
-        <BotonEnviar textoEnviando="Guardando…">{equipo ? "Guardar cambios" : "Dar de alta equipo"}</BotonEnviar>
+        <BotonEnviar textoEnviando="Guardando…">{equipo ? "Guardar cambios" : "Agregar máquina"}</BotonEnviar>
         <Link href={equipo ? `/mantenimiento/equipos/${equipo.id}` : "/mantenimiento"} className="boton-secundario">Cancelar</Link>
       </div>
     </Formulario>

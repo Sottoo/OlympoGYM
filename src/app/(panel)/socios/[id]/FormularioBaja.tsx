@@ -8,31 +8,22 @@ import { Selector } from "@/presentation/components/formulario/Selector";
 import { LIMITES } from "@/domain/shared/reglas";
 import { Ayuda, Etiqueta, Formulario } from "@/presentation/components/formulario/Formulario";
 import { accionDarDeBaja } from "../acciones";
+import { PieDelDialogo } from "./PieDelDialogo";
 
 /**
- * Baja en dos pasos: primero se abre el panel, luego se elige el motivo y
- * se confirma. Evita dar de baja a alguien por un clic accidental.
+ * Baja: el socio queda en espera (no se borra nada). Se abre en su propia
+ * ventana desde «Más» y pide el motivo antes de confirmar.
  */
-export function FormularioBaja({ socioId, nombre, tieneMembresiaVigente }: { socioId: string; nombre: string; tieneMembresiaVigente: boolean }) {
+export function FormularioBaja({ socioId, tieneMembresiaVigente, alCancelar }: { socioId: string; tieneMembresiaVigente: boolean; alCancelar: () => void }) {
   const [estado, accion] = useActionState(accionDarDeBaja, estadoInicial);
-  const [abierto, setAbierto] = useState(Boolean(estado.error));
   const [motivo, setMotivo] = useState(estado.valores?.motivo ?? "");
-
-  if (!abierto) {
-    return (
-      <button type="button" className="boton-peligro" onClick={() => setAbierto(true)}>
-        Dar de baja
-      </button>
-    );
-  }
 
   return (
     <Formulario action={accion} estado={estado} className="grid gap-4">
       <input type="hidden" name="socioId" value={socioId} />
-      <p className="text-[0.95rem]">
-        {nombre} dejará de aparecer en la lista de activos. Su historial de pagos se conserva y
-        puedes reactivarlo cuando quieras.
-        {tieneMembresiaVigente && <strong className="font-semibold"> Todavía tiene una membresía vigente.</strong>}
+      <p className="text-[0.9rem] text-tinta-suave">
+        Queda en espera con todo su historial y se puede reactivar cuando regrese.
+        {tieneMembresiaVigente && <strong className="font-semibold text-tinta"> Todavía tiene una membresía vigente.</strong>}
       </p>
       <div className="grid gap-4">
         <div>
@@ -62,13 +53,14 @@ export function FormularioBaja({ socioId, nombre, tieneMembresiaVigente }: { soc
             data-falta="Describe brevemente el motivo."
             defaultValue={estado.valores?.detalle}
           />
-          <Ayuda para="detalle">Sirve para saber después por qué se van los socios.</Ayuda>
+          <Ayuda para="detalle" />
         </div>
       </div>
-      <div className="flex flex-wrap gap-2">
-        <BotonEnviar textoEnviando="Dando de baja…">Confirmar baja</BotonEnviar>
-        <button type="button" className="boton-secundario" onClick={() => setAbierto(false)}>Cancelar</button>
-      </div>
+      <PieDelDialogo alCancelar={alCancelar}>
+        <BotonEnviar textoEnviando="Dando de baja…" variante="boton-oscuro">
+          Dar de baja
+        </BotonEnviar>
+      </PieDelDialogo>
     </Formulario>
   );
 }

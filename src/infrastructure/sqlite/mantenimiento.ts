@@ -23,7 +23,7 @@ interface FilaEquipo {
   fecha_compra: string | null; frecuencia_meses: number | null; servicio_base: string | null; nota: string | null; activo: number; creado_en: string;
 }
 interface FilaMantenimiento {
-  id: string; equipo_id: string; equipo_nombre: string; fecha: string; tipo: TipoMantenimiento; descripcion: string; proveedor: string | null;
+  id: string; equipo_id: string; equipo_nombre: string; equipo_eliminado: number; fecha: string; tipo: TipoMantenimiento; descripcion: string; proveedor: string | null;
   mano_de_obra: number; refacciones: number; total: number; pagado: number; nota: string | null; creado_en: string;
 }
 interface FilaAbono { id: string; mantenimiento_id: string; monto: number; metodo: MetodoPago; fecha: string; nota: string | null; creado_en: string }
@@ -37,7 +37,7 @@ const aEquipo = (f: FilaEquipo): Equipo => ({
   frecuenciaMeses: f.frecuencia_meses, servicioBase: f.servicio_base, nota: f.nota, activo: Boolean(f.activo), creadoEn: f.creado_en,
 });
 const aMantenimiento = (f: FilaMantenimiento): Mantenimiento => ({
-  id: f.id, equipoId: f.equipo_id, equipoNombre: f.equipo_nombre, fecha: f.fecha, tipo: f.tipo, descripcion: f.descripcion, proveedor: f.proveedor,
+  id: f.id, equipoId: f.equipo_id, equipoNombre: f.equipo_nombre, equipoEliminado: Boolean(f.equipo_eliminado), fecha: f.fecha, tipo: f.tipo, descripcion: f.descripcion, proveedor: f.proveedor,
   manoDeObra: f.mano_de_obra, refacciones: f.refacciones, total: f.total, pagado: Math.round((f.pagado ?? 0) * 100) / 100, nota: f.nota, creadoEn: f.creado_en,
 });
 const aAbono = (f: FilaAbono): Abono => ({ id: f.id, mantenimientoId: f.mantenimiento_id, monto: f.monto, metodo: f.metodo, fecha: f.fecha, nota: f.nota, creadoEn: f.creado_en });
@@ -48,7 +48,7 @@ const aReporte = (f: FilaReporte): ReporteFalla => ({
 
 /** Mantenimientos con el nombre de su equipo y lo pagado hasta hoy. */
 const SELECT_MANTENIMIENTOS = `
-  select m.*, e.nombre as equipo_nombre,
+  select m.*, e.nombre as equipo_nombre, e.eliminado_en is not null as equipo_eliminado,
          coalesce((select sum(a.monto) from abonos_mantenimiento a where a.mantenimiento_id = m.id), 0) as pagado
     from mantenimientos m
     join equipos e on e.id = m.equipo_id`;
@@ -62,13 +62,13 @@ export class SqliteMantenimientoRepository implements MantenimientoRepository {
 
   async listarEquipos() {
     return this.s
-      .todas<FilaEquipo>("select * from equipos")
+      .todas<FilaEquipo>("select * from equipos where eliminado_en is null")
       .map(aEquipo)
       .sort((a, b) => a.nombre.localeCompare(b.nombre, "es", { numeric: true, sensitivity: "base" }));
   }
 
   async obtenerEquipo(id: string) {
-    const f = this.s.una<FilaEquipo>("select * from equipos where id = ?", id);
+    const f = this.s.una<FilaEquipo>("select * from equipos where id = ? and eliminado_en is null", id);
     return f ? aEquipo(f) : null;
   }
 
@@ -114,11 +114,20 @@ export class SqliteMantenimientoRepository implements MantenimientoRepository {
   }
 
   async eliminarEquipo(id: string) {
-    this.s.escribir(() => {
-      if (this.s.una("select 1 as si from mantenimientos where equipo_id = ? limit 1", id) || this.s.una("select 1 as si from reportes_falla where equipo_id = ? limit 1", id)) {
-        throw new ErrorDeDominio("Este equipo ya tiene historial; en lugar de eliminarlo, dalo de baja.");
+    return this.s.escribir((): "completo" | "conservado" => {
+      const conHistorial =
+        this.s.una("select 1 as si from mantenimientos where equipo_id = ? limit 1", id) || this.s.una("select 1 as si from reportes_falla where equipo_id = ? limit 1", id);
+      if (!conHistorial) {
+        this.s.ejecutar("delete from equipos where id = ?", id);
+        return "completo";
       }
-      this.s.ejecutar("delete from equipos where id = ?", id);
+      // Con historial: deja de existir para el programa, pero lo gastado en ella se conserva.
+      this.s.ejecutar(
+        "update reportes_falla set atendido_en = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), cierre = 'Se eliminó la máquina' where equipo_id = ? and atendido_en is null",
+        id,
+      );
+      this.s.ejecutar("update equipos set activo = 0, eliminado_en = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') where id = ?", id);
+      return "conservado";
     });
   }
 
@@ -158,7 +167,7 @@ export class SqliteMantenimientoRepository implements MantenimientoRepository {
   async registrarMantenimiento(d: DatosMantenimiento & { total: number }, abono: Omit<DatosAbono, "mantenimientoId"> | null, resuelve: string[]) {
     const id = nuevoId();
     this.s.escribir(() => {
-      const equipo = this.s.una<FilaEquipo>("select * from equipos where id = ?", d.equipoId);
+      const equipo = this.s.una<FilaEquipo>("select * from equipos where id = ? and eliminado_en is null", d.equipoId);
       if (!equipo) throw new ErrorDeDominio("La máquina ya no existe. Vuelve a abrir la pantalla.", "equipoId");
       this.s.ejecutar(
         `insert into mantenimientos (id, equipo_id, fecha, tipo, descripcion, proveedor, mano_de_obra, refacciones, total, nota)
@@ -269,7 +278,7 @@ export class SqliteMantenimientoRepository implements MantenimientoRepository {
   async crearReporte(d: DatosReporte) {
     const id = nuevoId();
     this.s.escribir(() => {
-      const equipo = this.s.una<FilaEquipo>("select * from equipos where id = ?", d.equipoId);
+      const equipo = this.s.una<FilaEquipo>("select * from equipos where id = ? and eliminado_en is null", d.equipoId);
       if (!equipo || !equipo.activo) throw new ErrorDeDominio("Esa máquina ya no está en la lista. Vuelve a abrir la pantalla.", "equipoId");
       this.s.ejecutar(
         "insert into reportes_falla (id, equipo_id, descripcion, fuera_de_servicio, reportado_por) values (?, ?, ?, ?, ?)",
@@ -300,5 +309,9 @@ export class SqliteMantenimientoRepository implements MantenimientoRepository {
     this.s.escribir(() =>
       this.s.ejecutar("update reportes_falla set atendido_en = ?, cierre = ? where id = ? and atendido_en is null", new Date().toISOString(), cierre, id),
     );
+  }
+
+  async marcarFueraDeServicio(id: string) {
+    this.s.escribir(() => this.s.ejecutar("update reportes_falla set fuera_de_servicio = 1 where id = ? and atendido_en is null", id));
   }
 }

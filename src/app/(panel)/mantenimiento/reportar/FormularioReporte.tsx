@@ -9,7 +9,7 @@ import { type OpcionSelector, Selector } from "@/presentation/components/formula
 import { SelectorSegmentado } from "@/presentation/components/SelectorSegmentado";
 import { accionReportarFalla } from "../acciones";
 
-const USO = { no: "Sí, con cuidado", si: "No, ya no se puede usar" };
+const USO = { no: "Se puede usar", si: "Fuera de servicio" };
 
 export function FormularioReporte({
   equipos,
@@ -35,9 +35,9 @@ export function FormularioReporte({
       <div className="grid gap-6 p-5 sm:p-7">
         <AvisosDelFormulario />
         <div>
-          <Etiqueta para="equipoId">¿Qué máquina?</Etiqueta>
+          <Etiqueta para="equipoId">Máquina</Etiqueta>
           <Selector id="equipoId" nombre="equipoId" requerido opciones={equipos} valor={equipo} alCambiar={setEquipo} marcador="Elige la máquina" />
-          <Ayuda para="equipoId">Escribe las primeras letras para encontrarla rápido.</Ayuda>
+          <Ayuda para="equipoId" />
           {yaReportadas.length > 0 && (
             <p className="aparece mt-2 rounded-[10px] bg-ambar-tenue px-4 py-2.5 text-[0.86rem]">
               Ya está reportada: <strong className="font-semibold">{yaReportadas.join(" · ")}</strong>. Si es otra cosa, descríbela abajo.
@@ -45,7 +45,7 @@ export function FormularioReporte({
           )}
         </div>
         <div>
-          <Etiqueta para="descripcion">¿Qué le pasa?</Etiqueta>
+          <Etiqueta para="descripcion">Qué le pasa</Etiqueta>
           <textarea
             id="descripcion"
             name="descripcion"
@@ -59,18 +59,12 @@ export function FormularioReporte({
             data-regla="texto:3"
             data-falta="Describe qué le pasa a la máquina."
           />
-          <Ayuda para="descripcion" maximo={LIMITES_MANTENIMIENTO.reporte}>
-            Qué hace, desde cuándo y si alguien se lastimó.
-          </Ayuda>
+          <Ayuda para="descripcion" maximo={LIMITES_MANTENIMIENTO.reporte} />
         </div>
         <fieldset>
-          <legend className="etiqueta">¿Se puede seguir usando?</legend>
+          <legend className="etiqueta">Estado</legend>
           <SelectorSegmentado nombre="fueraDeServicio" opciones={USO} valor={fuera} alCambiar={setFuera} />
-          <p className="mensaje-campo">
-            {fuera === "si"
-              ? "Se marcará «Fuera de servicio». Pon un letrero en la máquina para que nadie la use."
-              : "Queda como «Con falla»: se puede usar mientras se arregla."}
-          </p>
+          {fuera === "si" && <p className="mensaje-campo">Pon un letrero en la máquina para que nadie la use.</p>}
         </fieldset>
       </div>
       <div className="flex flex-wrap items-center gap-3 border-t border-linea bg-hundido/60 px-5 py-4 sm:px-7">

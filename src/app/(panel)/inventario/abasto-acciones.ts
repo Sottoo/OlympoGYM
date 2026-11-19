@@ -62,9 +62,10 @@ export async function accionRecibirMercancia(_: EstadoFormulario, formData: Form
 
 export async function accionContarInventario(_: EstadoFormulario, formData: FormData): Promise<EstadoFormulario> {
   try {
-    const conteos = leerLista<{ productoId: string; contado: number }>(formData, "conteos").map((c) => ({
+    const conteos = leerLista<{ productoId: string; contado: number; esperado: number }>(formData, "conteos").map((c) => ({
       productoId: String(c.productoId),
       contado: Number(c.contado),
+      esperado: Number(c.esperado),
     }));
     if (conteos.length === 0) return { error: "Escribe lo que contaste en al menos un producto." };
     const r = await (await casosDeUso()).contarInventario.ejecutar(conteos, texto(formData, "nota"));

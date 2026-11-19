@@ -1,19 +1,21 @@
 import type { Metadata } from "next";
 import { PERMISOS, ROLES, puede, type Permiso } from "@/domain/shared/permisos";
-import { requerirSesion } from "@/infrastructure/auth/autenticacion";
+import { permisosExtraDeRecepcion, requerirSesion, tieneCodigoDeRecuperacion } from "@/infrastructure/auth/autenticacion";
 import { entorno } from "@/infrastructure/config/entorno";
 import { Encabezado } from "@/presentation/components/Encabezado";
 import { Insignia } from "@/presentation/components/Insignia";
 import { Panel } from "@/presentation/components/Panel";
+import { FormularioCodigo } from "./FormularioCodigo";
+import { BuscarActualizacion } from "./BuscarActualizacion";
 import { FormularioContrasena } from "./FormularioContrasena";
 
 export const metadata: Metadata = { title: "Mi cuenta" };
 export const dynamic = "force-dynamic";
 
-/** Datos de quien usa el programa, cambio de su propia contraseña y versión instalada. */
+/** Datos de quien usa el programa, cambio de su propia contraseña, su código de recuperación y versión instalada. */
 export default async function PaginaCuenta() {
   const yo = await requerirSesion();
-  const restringido = (Object.keys(PERMISOS) as Permiso[]).filter((p) => !puede(yo.rol, p));
+  const restringido = (Object.keys(PERMISOS) as Permiso[]).filter((p) => !puede(yo.rol, p, permisosExtraDeRecepcion()));
 
   return (
     <div className="pagina">
@@ -42,15 +44,24 @@ export default async function PaginaCuenta() {
           ) : (
             <p className="ayuda mt-3">Tienes acceso a todo el programa, incluida la sección Personal para dar cuentas a tu equipo.</p>
           )}
-          <p className="ayuda mt-auto border-t-[1.5px] border-dashed border-linea pt-4">
-            {entorno.nombreGimnasio} · versión <span className="tabular-nums">{entorno.versionPrograma}</span>
-          </p>
+          <div className="mt-auto border-t-[1.5px] border-dashed border-linea pt-4">
+            <p className="ayuda">
+              {entorno.nombreGimnasio} · versión <span className="tabular-nums">{entorno.versionPrograma}</span>
+            </p>
+            <BuscarActualizacion version={entorno.versionPrograma} />
+          </div>
         </Panel>
 
         <Panel titulo="Cambiar contraseña">
           <FormularioContrasena />
         </Panel>
       </div>
+
+      {yo.rol === "administrador" && (
+        <Panel titulo="Código de recuperación" descripcion="Para entrar si olvidas tu contraseña. Solo sirve para tu cuenta.">
+          <FormularioCodigo tieneCodigo={tieneCodigoDeRecuperacion(yo.id)} />
+        </Panel>
+      )}
     </div>
   );
 }

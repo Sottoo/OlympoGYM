@@ -27,9 +27,12 @@ export interface MantenimientoRepository {
   crearEquipos(lote: DatosEquipo[]): Promise<Equipo[]>;
   actualizarEquipo(id: string, datos: DatosEquipo): Promise<Equipo>;
   cambiarEstadoEquipo(id: string, activo: boolean): Promise<void>;
-  /** Si ya tiene mantenimientos o reportes, no se borra (se da de baja). */
   tieneHistorial(id: string): Promise<boolean>;
-  eliminarEquipo(id: string): Promise<void>;
+  /**
+   * Elimina la máquina para siempre. Sin historial se borra por completo; con
+   * mantenimientos o reportes deja de aparecer, pero sus gastos se conservan.
+   */
+  eliminarEquipo(id: string): Promise<"completo" | "conservado">;
 
   /* Mantenimientos y pagos */
   listarMantenimientos(filtro?: FiltroMantenimientos): Promise<Mantenimiento[]>;
@@ -61,4 +64,6 @@ export interface MantenimientoRepository {
   listarReportes(filtro?: { abiertos?: boolean; equipoId?: string }): Promise<ReporteFalla[]>;
   obtenerReporte(id: string): Promise<ReporteFalla | null>;
   cerrarReporte(id: string, cierre: string): Promise<void>;
+  /** La falla empeoró: el reporte abierto pasa a «fuera de servicio». */
+  marcarFueraDeServicio(id: string): Promise<void>;
 }

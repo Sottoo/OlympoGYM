@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useActionState, useEffect, useMemo, useState } from "react";
 import { METODOS_PAGO } from "@/domain/entities/Pago";
-import { CATEGORIAS_PRODUCTO, type CategoriaProducto, type UnidadProducto } from "@/domain/entities/Producto";
+import { CATEGORIAS_PRODUCTO, type CategoriaProducto, importeDe, type UnidadProducto } from "@/domain/entities/Producto";
 import { LIMITES } from "@/domain/shared/reglas";
 import { pluralizar } from "@/domain/shared/texto";
 import { estadoInicial } from "@/presentation/acciones/estadoFormulario";
@@ -41,7 +41,8 @@ export interface ProductoVendible {
 const esGranel = (p: ProductoVendible) => p.unidad === "gramo" && Boolean(p.porcionGramos);
 /** Lo que suma un toque: una pieza, o una porción a granel. */
 const paso = (p: ProductoVendible) => (esGranel(p) ? p.porcionGramos! : 1);
-const importe = (p: ProductoVendible, cantidad: number) => Math.round(((cantidad * p.precio) / paso(p)) * 100) / 100;
+// La misma cuenta que hace el servidor al cobrar, para que el total no difiera ni un centavo.
+const importe = (p: ProductoVendible, cantidad: number) => importeDe({ unidad: p.unidad, precioVenta: p.precio, porcionGramos: p.porcionGramos }, cantidad);
 const pluralDe = (palabra: string, n: number) => pluralizar(palabra, n);
 
 /** "2 scoops · 60 g" o "3 piezas". */

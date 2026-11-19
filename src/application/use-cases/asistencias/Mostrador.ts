@@ -48,6 +48,8 @@ export interface FichaDeEntrada {
   racha: number;
   /** Días distintos que ha venido desde que es socio (sin contar hoy si aún no entra). */
   visitas: number;
+  /** Ya tiene una entrada hoy (regresa después del tiempo entre entradas): hoy ya cuenta en `visitas`. */
+  vinoHoy: boolean;
   /** Hoy es su cumpleaños. */
   cumpleHoy: boolean;
   /** El plan de un día con el que se le cobra la visita si no tiene membresía (null si no hay uno). */
@@ -147,6 +149,7 @@ export class ConsultarFichaDeEntrada {
       sellosDelMes: dias.filter((d) => d.startsWith(mes)).map((d) => Number(d.slice(8, 10))),
       racha: contarRacha(dias, hoy),
       visitas: dias.length,
+      vinoHoy: dias.includes(hoy),
       cumpleHoy: socio.fechaNacimiento ? cumpleAniosEn(socio.fechaNacimiento, hoy) : false,
       visita,
     };
@@ -203,8 +206,10 @@ export class CobrarVisita {
     private readonly suscripciones: SuscripcionRepository,
   ) {}
 
-  async ejecutar(socioId: string, metodoPago: MetodoPago): Promise<{ asistencia: Asistencia; visita: PlanDeVisita; suscripcionId: string }> {
-    const { veredicto, nombre, visita } = await this.consultar.ejecutar(socioId);
+  /** `planElegido`: la visita que se eligió (al inscribir); si no, la del mostrador (la más barata). */
+  async ejecutar(socioId: string, metodoPago: MetodoPago, planElegido?: PlanDeVisita): Promise<{ asistencia: Asistencia; visita: PlanDeVisita; suscripcionId: string }> {
+    const { veredicto, nombre, visita: delMostrador } = await this.consultar.ejecutar(socioId);
+    const visita = planElegido ?? delMostrador;
     if (veredicto.tipo !== "sin_membresia") throw new ErrorDeDominio(`${nombre} no necesita pagar visita: ${veredicto.tipo === "puede_pasar" ? "su membresía está vigente" : "revisa su ficha"}.`);
     if (!visita) throw new ErrorDeDominio("No hay un plan de visita (1 día). La administración puede crearlo en Planes.");
     const suscripcion = await this.asignarPlan.ejecutar({ socioId, planId: visita.planId, metodoPago });

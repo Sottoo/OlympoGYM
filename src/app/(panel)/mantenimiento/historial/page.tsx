@@ -15,7 +15,7 @@ import { formatearDinero, formatearFecha } from "@/shared/formato";
 import { EstadoPagoInsignia } from "../piezas";
 import { SeccionesDeMantenimiento } from "../Secciones";
 
-export const metadata: Metadata = { title: "Historial de mantenimiento" };
+export const metadata: Metadata = { title: "Mantenimientos y gastos" };
 export const dynamic = "force-dynamic";
 
 const MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
@@ -35,8 +35,8 @@ export default async function PaginaHistorial({ searchParams }: { searchParams: 
   return (
     <div className="pagina">
       <Encabezado icono="llave"
-        titulo="Mantenimiento"
-        descripcion="Todo lo que se les ha hecho a las máquinas, mes por mes, y lo que ha costado."
+        titulo="Máquinas"
+        descripcion="Los mantenimientos de cada mes y lo que costaron."
         acciones={
           exporta && (
             <a href={`/api/exportar/mantenimiento?mes=${mes.slice(0, 7)}`} className="boton-secundario" download>
@@ -101,7 +101,13 @@ export default async function PaginaHistorial({ searchParams }: { searchParams: 
                   <td>
                     <span className="flex items-center gap-2.5">
                       <Emblema {...dibujoDeEquipo({ nombre: m.equipoNombre, area: "otro" })} tamano="xs" />
-                      <Link href={`/mantenimiento/equipos/${m.equipoId}`} className="enlace">{m.equipoNombre}</Link>
+                      {m.equipoEliminado ? (
+                        <span>
+                          {m.equipoNombre} <span className="text-[0.76rem] text-gris">(eliminada)</span>
+                        </span>
+                      ) : (
+                        <Link href={`/mantenimiento/equipos/${m.equipoId}`} className="enlace">{m.equipoNombre}</Link>
+                      )}
                     </span>
                   </td>
                   <td className="whitespace-nowrap text-tinta-suave">{TIPOS_MANTENIMIENTO[m.tipo]}</td>

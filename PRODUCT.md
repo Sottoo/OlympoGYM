@@ -44,7 +44,8 @@ The app is built for one specific gym, not a generic SaaS. It runs fully on the 
 - Stack: Next.js 15, TypeScript and Tailwind CSS 4 inside Electron, with SQLite and clean-architecture layers.
 - Language: Spanish (Mexico), MXN currency, America/Mexico_City time zone.
 - Every member needs a phone number. Birth date and photo are optional.
-- Out of scope for now: fingerprint or barcode attendance, WhatsApp reminders (manual or automatic), card payments, check-out tracking.
+- Fingerprint attendance (optional): HID DigitalPersona U.are.U 4500 reader through the free HID Authentication Device Client; enrollment in the member's file with signed consent.
+- Out of scope for now: barcode attendance, WhatsApp reminders (manual or automatic), card payments, check-out tracking.
 
 ## Brand Commitments
 

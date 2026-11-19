@@ -33,7 +33,7 @@ export async function accionCambiarCarpetaExtra(ruta: string | null): Promise<Re
 }
 
 export async function accionRestaurar(_: { error?: string }, formData: FormData): Promise<{ error?: string }> {
-  let quien: { id: string };
+  let quien: { id: string; nombre: string };
   try {
     quien = await verificarPermiso("respaldos.gestionar");
   } catch (error) {
@@ -44,7 +44,7 @@ export async function accionRestaurar(_: { error?: string }, formData: FormData)
   if (formData.get("confirmo") !== "si") return { error: "Confirma que entiendes que se reemplazará la información actual." };
   let copiaPrevia: string;
   try {
-    ({ copiaPrevia } = restaurarRespaldo(new Uint8Array(await archivo.arrayBuffer())));
+    ({ copiaPrevia } = restaurarRespaldo(new Uint8Array(await archivo.arrayBuffer()), { usuario: quien.nombre, archivo: archivo.name }));
   } catch (error) {
     return { error: mensajeDeError(error) };
   }

@@ -132,6 +132,7 @@ export async function accionRegistrarMovimiento(_: EstadoFormulario, formData: F
       productoId,
       tipo,
       cantidad: numero(formData, "cantidad") ?? Number.NaN,
+      esperado: numero(formData, "esperado"),
       nota: texto(formData, "nota"),
     });
   } catch (error) {

@@ -52,7 +52,7 @@ export default async function PaginaInventario({ searchParams }: { searchParams:
 
   return (
     <div className="pagina">
-      <Encabezado icono="inventario"
+      <Encabezado guia="inventario" icono="inventario"
         titulo="Inventario"
         descripcion="Lo que se vende en la tienda: existencias, precios y lo que hay que resurtir."
         acciones={
@@ -74,7 +74,7 @@ export default async function PaginaInventario({ searchParams }: { searchParams:
       />
 
       <MensajeExito
-        mensaje={eliminado ? `«${eliminado}» se eliminó.` : reactivado ? `«${reactivado}» se reactivó: ya aparece otra vez en la Tienda.` : undefined}
+        mensaje={eliminado ? `«${eliminado}» se eliminó para siempre. Si tuvo ventas, siguen en los cortes de esos días.` : reactivado ? `«${reactivado}» se reactivó: ya aparece otra vez en la Tienda.` : undefined}
       />
 
       <Indicadores

@@ -27,10 +27,14 @@ export const TABLAS_BITACORA = {
   equipos: "Mantenimiento",
   abonos_mantenimiento: "Mantenimiento",
   reportes_falla: "Mantenimiento",
+  huellas: "Socios",
+  /** Restauraciones de respaldo (las anota el programa, no un trigger). */
+  respaldos: "Respaldos",
 } as const;
 
 /** Áreas del filtro que juntan varias tablas (una sola pestaña "Mantenimiento"). */
 export const GRUPOS_BITACORA: Partial<Record<TablaBitacora, TablaBitacora[]>> = {
+  socios: ["socios", "huellas"],
   mantenimientos: ["mantenimientos", "equipos", "abonos_mantenimiento", "reportes_falla"],
 };
 

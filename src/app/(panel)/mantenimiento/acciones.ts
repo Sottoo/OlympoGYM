@@ -158,17 +158,19 @@ export async function accionEliminarAbono(_: EstadoFormulario, formData: FormDat
 
 export async function accionReportarFalla(_: EstadoFormulario, formData: FormData): Promise<EstadoFormulario> {
   const equipoId = texto(formData, "equipoId");
+  let escalada: boolean;
   try {
-    await (await casosDeUso()).reportarFalla.ejecutar({
+    ({ escalada } = await (await casosDeUso()).reportarFalla.ejecutar({
       equipoId,
       descripcion: texto(formData, "descripcion"),
       fueraDeServicio: texto(formData, "fueraDeServicio") === "si",
-    });
+    }));
   } catch (error) {
     return fallo(error, formData);
   }
   actualizarVistas();
-  redirect(texto(formData, "volver") === "ficha" ? `/mantenimiento/equipos/${equipoId}?aviso=reportado` : "/mantenimiento?aviso=reportado");
+  const aviso = escalada ? "escalado" : "reportado";
+  redirect(texto(formData, "volver") === "ficha" ? `/mantenimiento/equipos/${equipoId}?aviso=${aviso}` : `/mantenimiento?aviso=${aviso}`);
 }
 
 export async function accionCerrarReporte(_: EstadoFormulario, formData: FormData): Promise<EstadoFormulario> {

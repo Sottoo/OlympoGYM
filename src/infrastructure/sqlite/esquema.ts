@@ -316,5 +316,125 @@ const fotoDeProducto = /* sql */ `
   ${disparador("productos", "eliminacion", "", columnasProductoConFoto)}
 `;
 
+/**
+ * v6: huellas de los socios, para registrar la entrada poniendo el dedo en el
+ * lector. Se guarda solo la plantilla (no la imagen), una por dedo. La
+ * bitácora anota quién registró o borró la huella de quién, nunca la plantilla.
+ */
+const bitacoraDeHuella = (operacion: "alta" | "cambio" | "eliminacion") => {
+  const evento = { alta: "insert", cambio: "update", eliminacion: "delete" }[operacion];
+  const fila = operacion === "eliminacion" ? "old" : "new";
+  const datos = `json_object('id', ${fila}.id, 'socio_id', ${fila}.socio_id, 'dedo', ${fila}.dedo,
+    'nombre', (select nombre from socios where id = ${fila}.socio_id),
+    'apellidos', (select apellidos from socios where id = ${fila}.socio_id))`;
+  return `
+    create trigger bitacora_huellas_${operacion} after ${evento} on huellas
+    begin
+      insert into bitacora (usuario_nombre, tabla, operacion, registro_id, antes, despues)
+      values ((select usuario from contexto where id = 1), 'huellas', '${operacion}', ${fila}.id,
+        ${operacion === "alta" ? "null" : datos}, ${operacion === "eliminacion" ? "null" : datos});
+    end;`;
+};
+const huellas = /* sql */ `
+  create table huellas (
+    id            text primary key,
+    socio_id      text not null references socios (id) on delete cascade,
+    dedo          text not null check (dedo in ('indice_derecho', 'medio_derecho', 'pulgar_derecho', 'indice_izquierdo', 'medio_izquierdo', 'pulgar_izquierdo')),
+    plantilla     blob not null,
+    registrada_en text not null default ${AHORA},
+    unique (socio_id, dedo)
+  );
+  ${bitacoraDeHuella("alta")}
+  ${bitacoraDeHuella("cambio")}
+  ${bitacoraDeHuella("eliminacion")}
+`;
+
+/**
+ * v7: borrado definitivo de socios y productos. Si ya tienen dinero de por
+ * medio (pagos, ventas), su fila se queda solo como "eliminado" para que los
+ * cortes de esos días sigan cuadrando: el socio pierde nombre, celular, foto,
+ * notas y huellas; el producto deja de aparecer en todos lados y libera su
+ * código. La bitácora de los dos se vuelve a crear para anotar el borrado.
+ */
+const columnasSocio = [...COLUMNAS_BITACORA.socios, "eliminado_en"];
+const columnasProducto = [...columnasProductoConFoto, "eliminado_en"];
+const borradoDefinitivo = /* sql */ `
+  alter table socios add column eliminado_en text;
+  alter table productos add column eliminado_en text;
+  drop trigger if exists bitacora_socios_alta;
+  drop trigger if exists bitacora_socios_cambio;
+  drop trigger if exists bitacora_socios_eliminacion;
+  ${disparador("socios", "alta", "", columnasSocio)}
+  ${disparador("socios", "cambio", "", columnasSocio)}
+  ${disparador("socios", "eliminacion", "", columnasSocio)}
+  drop trigger if exists bitacora_productos_alta;
+  drop trigger if exists bitacora_productos_cambio;
+  drop trigger if exists bitacora_productos_eliminacion;
+  ${disparador("productos", "alta", "", columnasProducto)}
+  ${disparador("productos", "cambio", soloCambioDeStock.replace(/\)$/, " and old.foto is new.foto and old.eliminado_en is new.eliminado_en)"), columnasProducto)}
+  ${disparador("productos", "eliminacion", "", columnasProducto)}
+`;
+
+/**
+ * v8 — Eliminar máquinas para siempre. Si ya tiene mantenimientos o
+ * reportes, la máquina no se borra de la base: se marca eliminada y deja de
+ * aparecer, pero lo que se gastó en ella sigue en el historial y los gastos.
+ */
+const columnasEquipo = [...COLUMNAS_BITACORA.equipos, "eliminado_en"];
+const equiposEliminados = /* sql */ `
+  alter table equipos add column eliminado_en text;
+  drop trigger if exists bitacora_equipos_alta;
+  drop trigger if exists bitacora_equipos_cambio;
+  drop trigger if exists bitacora_equipos_eliminacion;
+  ${disparador("equipos", "alta", "", columnasEquipo)}
+  ${disparador("equipos", "cambio", "", columnasEquipo)}
+  ${disparador("equipos", "eliminacion", "", columnasEquipo)}
+`;
+
+/**
+ * v9 — Eliminar planes para siempre. Si ya se vendió, el plan no se borra de
+ * la base: se marca eliminado y deja de aparecer, pero cada socio conserva su
+ * membresía con el nombre del plan y los cortes no cambian.
+ */
+const columnasPlan = [...COLUMNAS_BITACORA.planes, "eliminado_en"];
+const planesEliminados = /* sql */ `
+  alter table planes add column eliminado_en text;
+  drop trigger if exists bitacora_planes_alta;
+  drop trigger if exists bitacora_planes_cambio;
+  drop trigger if exists bitacora_planes_eliminacion;
+  ${disparador("planes", "alta", "", columnasPlan)}
+  ${disparador("planes", "cambio", "", columnasPlan)}
+  ${disparador("planes", "eliminacion", "", columnasPlan)}
+`;
+
+/**
+ * v10 — El código de recuperación es de una cuenta. Se guarda de quién es
+ * (ajuste `codigo_recuperacion_dueno`) y solo restablece la contraseña de esa
+ * cuenta. Si la cuenta se elimina, se desactiva o pasa a recepción, la base
+ * borra el código por sí sola. Un código que ya existía sin dueño queda de la
+ * cuenta de administración activa más antigua (a la que antes restablecía).
+ */
+const codigoConDueno = /* sql */ `
+  insert into ajustes (clave, valor)
+    select 'codigo_recuperacion_dueno', id from personal
+    where rol = 'administrador' and activo = 1
+      and exists (select 1 from ajustes where clave = 'codigo_recuperacion')
+      and not exists (select 1 from ajustes where clave = 'codigo_recuperacion_dueno')
+    order by creado_en limit 1;
+
+  create trigger codigo_recuperacion_cuenta_eliminada after delete on personal
+    when old.id = (select valor from ajustes where clave = 'codigo_recuperacion_dueno')
+  begin
+    delete from ajustes where clave in ('codigo_recuperacion', 'codigo_recuperacion_dueno');
+  end;
+
+  create trigger codigo_recuperacion_cuenta_cambiada after update of rol, activo on personal
+    when old.id = (select valor from ajustes where clave = 'codigo_recuperacion_dueno')
+      and (new.activo = 0 or new.rol <> 'administrador')
+  begin
+    delete from ajustes where clave in ('codigo_recuperacion', 'codigo_recuperacion_dueno');
+  end;
+`;
+
 /** Migraciones en orden. La posición + 1 es la versión que queda en `user_version`. */
-export const MIGRACIONES: string[] = [inicial, sinRecordatorios, ventaAGranel, mantenimiento, fotoDeProducto];
+export const MIGRACIONES: string[] = [inicial, sinRecordatorios, ventaAGranel, mantenimiento, fotoDeProducto, huellas, borradoDefinitivo, equiposEliminados, planesEliminados, codigoConDueno];

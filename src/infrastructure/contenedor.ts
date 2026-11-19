@@ -19,6 +19,7 @@ import {
   RegistrarEntrada,
 } from "@/application/use-cases/asistencias/Mostrador";
 import { ConsultarBitacora } from "@/application/use-cases/bitacora/ConsultarBitacora";
+import { BorrarHuella, IdentificarPorHuella, LeerToque, ListarHuellasDeSocio, RegistrarHuella } from "@/application/use-cases/huellas/Huellas";
 import { ObtenerResumen } from "@/application/use-cases/dashboard/ObtenerResumen";
 import { ObtenerMetricas } from "@/application/use-cases/metricas/ObtenerMetricas";
 import {
@@ -61,10 +62,11 @@ import {
   ObtenerPopularidad,
   RecibirMercancia,
 } from "@/application/use-cases/inventario/Abasto";
-import { CambiarEstadoPlan, CrearPlan, ListarPlanes } from "@/application/use-cases/planes/GestionarPlanes";
+import { CambiarEstadoPlan, CrearPlan, EditarPlan, EliminarPlan, ListarPlanes, ListarPlanesVendidos } from "@/application/use-cases/planes/GestionarPlanes";
 import {
   CambiarFotoSocio,
   DarDeBajaSocio,
+  EliminarSocioDefinitivo,
   EditarSocio,
   QuitarFotoSocio,
   ReactivarSocio,
@@ -73,10 +75,12 @@ import { ListarSocios } from "@/application/use-cases/socios/ListarSocios";
 import { ObtenerDetalleSocio } from "@/application/use-cases/socios/ObtenerDetalleSocio";
 import { RegistrarSocio } from "@/application/use-cases/socios/RegistrarSocio";
 import { RevisarCelular } from "@/application/use-cases/socios/celular";
-import { AsignarPlan } from "@/application/use-cases/suscripciones/AsignarPlan";
+import { BuscarSociosParecidos, DetectarDuplicados, UnirSocios } from "@/application/use-cases/socios/Duplicados";
+import { AsignarPlan, CancelarMembresia, CorregirMembresia } from "@/application/use-cases/suscripciones/AsignarPlan";
 import { ObtenerCorteDelDia, RegistrarVenta } from "@/application/use-cases/ventas/Ventas";
 import type { AsistenciaRepository } from "@/domain/repositories/AsistenciaRepository";
 import type { BitacoraRepository } from "@/domain/repositories/BitacoraRepository";
+import type { HuellaRepository } from "@/domain/repositories/HuellaRepository";
 import type { InventarioRepository } from "@/domain/repositories/InventarioRepository";
 import type { PagoRepository } from "@/domain/repositories/PagoRepository";
 import type { PlanRepository } from "@/domain/repositories/PlanRepository";
@@ -86,7 +90,7 @@ import type { SuscripcionRepository } from "@/domain/repositories/SuscripcionRep
 import type { VentaRepository } from "@/domain/repositories/VentaRepository";
 import type { AlmacenFotos } from "@/domain/services/AlmacenFotos";
 import { redirect } from "next/navigation";
-import { obtenerAcceso } from "./auth/autenticacion";
+import { obtenerAcceso, permisosExtraDeRecepcion } from "./auth/autenticacion";
 import { SinPermiso } from "@/domain/shared/ErrorDeDominio";
 import { PERMISOS, type Permiso, puede } from "@/domain/shared/permisos";
 import { entorno } from "./config/entorno";
@@ -104,6 +108,8 @@ import {
   SqliteVentaRepository,
 } from "./sqlite/repositorios";
 import { SqliteMantenimientoRepository } from "./sqlite/mantenimiento";
+import { SqliteHuellaRepository } from "./sqlite/huellas";
+import { MotorFingerJet } from "./huellas/FingerJet";
 import { RelojSistema } from "./RelojSistema";
 
 interface Repositorios {
@@ -118,6 +124,7 @@ interface Repositorios {
   asistencias: AsistenciaRepository;
   bitacora: BitacoraRepository;
   mantenimiento: MantenimientoRepository;
+  huellas: HuellaRepository;
 }
 
 /** Repositorios sobre la base local, con el nombre de quien escribe (para la bitácora). */
@@ -135,10 +142,12 @@ function repositoriosLocales(usuario: string): Repositorios {
     asistencias: new SqliteAsistenciaRepository(s),
     bitacora: new SqliteBitacoraRepository(s),
     mantenimiento: new SqliteMantenimientoRepository(s),
+    huellas: new SqliteHuellaRepository(s),
   };
 }
 
 const reloj = new RelojSistema(entorno.zonaHoraria);
+const motorDeHuellas = new MotorFingerJet();
 
 /**
  * Casos de uso para las pantallas del panel (con la sesión del usuario).
@@ -150,6 +159,7 @@ export const casosDeUso = cache(async () => {
   const acceso = await obtenerAcceso();
   if (acceso.tipo !== "autorizado") redirect("/login");
   const { rol } = acceso.personal;
+  const extras = permisosExtraDeRecepcion();
   const r = repositoriosLocales(acceso.personal.nombre);
 
   /**
@@ -158,7 +168,7 @@ export const casosDeUso = cache(async () => {
    * ni consulta se salta los permisos, venga de donde venga.
    */
   function soloCon<T extends { ejecutar: (...args: never[]) => Promise<unknown> }>(permiso: Permiso, caso: T): T {
-    if (puede(rol, permiso)) return caso;
+    if (puede(rol, permiso, extras)) return caso;
     return {
       ejecutar: async () => {
         throw new SinPermiso(PERMISOS[permiso]);
@@ -168,7 +178,8 @@ export const casosDeUso = cache(async () => {
 
   const listarEntradas = new ListarEntradas(r.asistencias, r.socios, reloj);
   const consultarFichaDeEntrada = new ConsultarFichaDeEntrada(r.socios, r.suscripciones, r.asistencias, r.fotos, r.planes, reloj);
-  const asignarPlan = new AsignarPlan(r.socios, r.planes, r.suscripciones, reloj, puede(rol, "cobros.otroMonto"));
+  // Un cobro con fecha de otro día cambia cortes ya cerrados: es una corrección.
+  const asignarPlan = new AsignarPlan(r.socios, r.planes, r.suscripciones, reloj, puede(rol, "cobros.otroMonto", extras), puede(rol, "cobros.corregir", extras));
   const registrarEntrada = new RegistrarEntrada(consultarFichaDeEntrada, r.asistencias, reloj);
   const cobrarVisita = new CobrarVisita(consultarFichaDeEntrada, asignarPlan, registrarEntrada, r.suscripciones);
 
@@ -177,17 +188,26 @@ export const casosDeUso = cache(async () => {
     // Socios
     listarSocios: new ListarSocios(r.socios, r.suscripciones, reloj),
     obtenerDetalleSocio: new ObtenerDetalleSocio(r.socios, r.suscripciones, r.pagos, r.fotos, reloj),
-    registrarSocio: new RegistrarSocio(r.socios, r.planes, asignarPlan, cobrarVisita, reloj, puede(rol, "cobros.otroMonto")),
+    registrarSocio: new RegistrarSocio(r.socios, r.planes, asignarPlan, cobrarVisita, reloj, puede(rol, "cobros.otroMonto", extras), puede(rol, "cobros.corregir", extras)),
     revisarCelular: new RevisarCelular(r.socios),
     editarSocio: new EditarSocio(r.socios, reloj),
     cambiarFotoSocio: new CambiarFotoSocio(r.socios, r.fotos),
     quitarFotoSocio: new QuitarFotoSocio(r.socios, r.fotos),
     darDeBajaSocio: soloCon("socios.baja", new DarDeBajaSocio(r.socios, reloj)),
     reactivarSocio: soloCon("socios.baja", new ReactivarSocio(r.socios)),
+    eliminarSocioDefinitivo: soloCon("socios.eliminar", new EliminarSocioDefinitivo(r.socios, r.fotos)),
+    buscarSociosParecidos: new BuscarSociosParecidos(r.socios),
+    detectarDuplicados: new DetectarDuplicados(r.socios),
+    unirSocios: soloCon("socios.eliminar", new UnirSocios(r.socios, r.fotos)),
+    corregirMembresia: soloCon("cobros.corregir", new CorregirMembresia(r.planes, r.suscripciones)),
+    cancelarMembresia: soloCon("cobros.corregir", new CancelarMembresia(r.suscripciones, reloj)),
     // Planes y membresías
     listarPlanes: new ListarPlanes(r.planes),
     crearPlan: soloCon("planes.gestionar", new CrearPlan(r.planes)),
     cambiarEstadoPlan: soloCon("planes.gestionar", new CambiarEstadoPlan(r.planes)),
+    editarPlan: soloCon("planes.gestionar", new EditarPlan(r.planes)),
+    eliminarPlan: soloCon("planes.gestionar", new EliminarPlan(r.planes)),
+    listarPlanesVendidos: soloCon("planes.gestionar", new ListarPlanesVendidos(r.planes)),
     asignarPlan,
     // Inventario y ventas
     listarProductos: new ListarProductos(r.productos),
@@ -218,6 +238,12 @@ export const casosDeUso = cache(async () => {
     obtenerSellosDeSocio: new ObtenerSellosDeSocio(r.asistencias, reloj),
     obtenerRachas: new ObtenerRachas(r.asistencias, r.socios, reloj),
     obtenerHabituales: new ObtenerHabituales(r.asistencias, r.socios, reloj),
+    // Huellas: registrar y borrar las hace quien da de alta socios (recepción también); identificar, el mostrador.
+    leerToque: new LeerToque(motorDeHuellas),
+    registrarHuella: new RegistrarHuella(r.huellas, r.socios, motorDeHuellas),
+    identificarPorHuella: new IdentificarPorHuella(r.huellas, motorDeHuellas),
+    listarHuellasDeSocio: new ListarHuellasDeSocio(r.huellas),
+    borrarHuella: new BorrarHuella(r.huellas),
     // Mantenimiento: el estado de las máquinas y reportar fallas es para todos; costos y pagos, para la administración.
     obtenerTableroDeMantenimiento: new ObtenerTableroDeMantenimiento(r.mantenimiento, reloj),
     obtenerFichaDeEquipo: new ObtenerFichaDeEquipo(r.mantenimiento, reloj),
@@ -229,10 +255,10 @@ export const casosDeUso = cache(async () => {
     cambiarEstadoEquipo: soloCon("mantenimiento.gestionar", new CambiarEstadoEquipo(r.mantenimiento)),
     eliminarEquipo: soloCon("mantenimiento.gestionar", new EliminarEquipo(r.mantenimiento)),
     registrarMantenimiento: soloCon("mantenimiento.gestionar", new RegistrarMantenimiento(r.mantenimiento, reloj)),
-    obtenerMantenimiento: soloCon("mantenimiento.gestionar", new ObtenerMantenimiento(r.mantenimiento)),
-    eliminarMantenimiento: soloCon("mantenimiento.gestionar", new EliminarMantenimiento(r.mantenimiento)),
+    obtenerMantenimiento: soloCon("mantenimiento.gestionar", new ObtenerMantenimiento(r.mantenimiento, reloj)),
+    eliminarMantenimiento: soloCon("mantenimiento.gestionar", new EliminarMantenimiento(r.mantenimiento, reloj)),
     registrarAbono: soloCon("mantenimiento.gestionar", new RegistrarAbono(r.mantenimiento, reloj)),
-    eliminarAbono: soloCon("mantenimiento.gestionar", new EliminarAbono(r.mantenimiento)),
+    eliminarAbono: soloCon("mantenimiento.gestionar", new EliminarAbono(r.mantenimiento, reloj)),
     listarHistorialDeMantenimiento: soloCon("mantenimiento.gestionar", new ListarHistorialDeMantenimiento(r.mantenimiento)),
     obtenerPorPagar: soloCon("mantenimiento.gestionar", new ObtenerPorPagar(r.mantenimiento)),
     listarProveedores: soloCon("mantenimiento.gestionar", new ListarProveedores(r.mantenimiento)),

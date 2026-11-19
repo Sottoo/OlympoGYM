@@ -39,7 +39,7 @@ export default async function PaginaRespaldos({ searchParams }: { searchParams: 
 
   return (
     <div className="pagina">
-      <Encabezado icono="respaldos"
+      <Encabezado guia="respaldos" icono="respaldos"
         titulo="Respaldos"
         descripcion="Todo vive en esta computadora. Cada respaldo es una copia completa: socios, pagos, ventas, inventario, entradas y fotos."
       />

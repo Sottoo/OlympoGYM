@@ -22,7 +22,7 @@ export default async function PaginaPorPagar() {
 
   return (
     <div className="pagina">
-      <Encabezado icono="llave" titulo="Mantenimiento" descripcion="Lo que se les debe a técnicos y empresas, de lo más antiguo a lo más reciente." />
+      <Encabezado icono="llave" titulo="Máquinas" descripcion="Lo que se les debe a técnicos y empresas." />
       <SeccionesDeMantenimiento activa="por-pagar" porPagar={trabajos} />
 
       <Indicadores
@@ -57,7 +57,13 @@ export default async function PaginaPorPagar() {
                     <td>
                       <span className="flex items-center gap-2.5">
                       <Emblema {...dibujoDeEquipo({ nombre: m.equipoNombre, area: "otro" })} tamano="xs" />
-                      <Link href={`/mantenimiento/equipos/${m.equipoId}`} className="enlace">{m.equipoNombre}</Link>
+                      {m.equipoEliminado ? (
+                        <span>
+                          {m.equipoNombre} <span className="text-[0.76rem] text-gris">(eliminada)</span>
+                        </span>
+                      ) : (
+                        <Link href={`/mantenimiento/equipos/${m.equipoId}`} className="enlace">{m.equipoNombre}</Link>
+                      )}
                     </span>
                     </td>
                     <td>

@@ -1,9 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { METODOS_PAGO } from "@/domain/entities/Pago";
+import { DIAS_PARA_COBRO_ATRASADO, METODOS_PAGO } from "@/domain/entities/Pago";
+import { sumarDias } from "@/domain/shared/fechas";
 import { LIMITES } from "@/domain/shared/reglas";
 import { CampoDinero } from "@/presentation/components/formulario/campos";
+import { CampoFecha, describirFecha } from "@/presentation/components/formulario/CampoFecha";
 import { Ayuda, Etiqueta } from "@/presentation/components/formulario/Formulario";
 import { BotonDeRopa } from "@/presentation/components/formulario/marcas";
 import { SelectorSegmentado } from "@/presentation/components/SelectorSegmentado";
@@ -22,6 +24,8 @@ interface Props {
   planes: OpcionPlan[];
   planPreferido?: string;
   puedeCambiarMonto: boolean;
+  /** Si puede anotar un cobro de otro día (cambia cortes pasados: solo con permiso de corregir cobros). */
+  puedeCambiarFecha: boolean;
   /** Lo que se había escrito si el servidor regresó un error. */
   valores?: Record<string, string>;
   /** Avisa qué plan quedó elegido (para el texto del botón). */
@@ -31,9 +35,11 @@ interface Props {
 }
 
 /** Plan, método de pago, monto y nota: lo mismo al inscribir que al renovar. */
-export function CamposDeCobro({ planes, planPreferido, puedeCambiarMonto, valores, alElegir, ayudaMembresia = "La membresía empieza hoy." }: Props) {
+export function CamposDeCobro({ planes, planPreferido, puedeCambiarMonto, puedeCambiarFecha, valores, alElegir, ayudaMembresia = "La membresía empieza hoy." }: Props) {
   const [elegido, setElegido] = useState(() => valores?.planId ?? planPreferido ?? "");
   const [metodo, setMetodo] = useState(valores?.metodoPago ?? "efectivo");
+  // Si se olvidó registrar un cobro, se anota con su fecha real (hasta 31 días atrás).
+  const [otroDia, setOtroDia] = useState(puedeCambiarFecha && Boolean(valores?.fecha));
   // Si la lista cambia con la pantalla abierta (se creó o desactivó un plan),
   // nunca queda "ninguno": se toma el preferido o el primero.
   const plan = planes.find((p) => p.id === elegido) ?? planes.find((p) => p.id === planPreferido) ?? planes[0];
@@ -66,9 +72,35 @@ export function CamposDeCobro({ planes, planPreferido, puedeCambiarMonto, valore
           })}
         </div>
         <Ayuda para="planId">
-          {plan?.esVisita ? "Se cobra la visita y su entrada de hoy queda anotada." : ayudaMembresia}
+          {plan?.esVisita
+            ? "Se cobra la visita y su entrada de hoy queda anotada."
+            : otroDia && ayudaMembresia === "La membresía empieza hoy."
+              ? "La membresía empieza el día en que se cobró."
+              : ayudaMembresia}
         </Ayuda>
       </fieldset>
+
+      {/* Pregunta a la vista (no una casilla escondida): olvidarla manda al corte de hoy
+          dinero de otro día y hace que la membresía empiece y venza tarde. */}
+      {puedeCambiarFecha && !plan?.esVisita && (
+        <fieldset className="grid gap-2.5">
+          <legend className="etiqueta">¿Cuándo pagó?</legend>
+          <SelectorSegmentado
+            nombre="cuandoPago"
+            opciones={{ hoy: "Hoy", otro: "Otro día (se registra tarde)" }}
+            valor={otroDia ? "otro" : "hoy"}
+            alCambiar={(v) => setOtroDia(v === "otro")}
+          />
+          {otroDia ? (
+            <FechaDelCobro inicial={valores?.fecha} />
+          ) : (
+            <p className="mensaje-campo">
+              El dinero entra en el <b className="font-semibold text-tinta">corte de hoy</b>. Si pagó otro día, elige «Otro día» para que su membresía y el corte tomen esa
+              fecha.
+            </p>
+          )}
+        </fieldset>
+      )}
 
       <fieldset>
         <legend className="etiqueta">Método de pago</legend>
@@ -88,7 +120,7 @@ export function CamposDeCobro({ planes, planPreferido, puedeCambiarMonto, valore
               valorInicial={valores?.planId === planId && valores.monto ? valores.monto : plan?.precio}
               atributos={{ "data-que": "El monto", "data-falta": "Escribe cuánto se cobró." }}
             />
-            <Ayuda para="monto">Precio del plan: {plan ? formatearDinero(plan.precio) : "—"}. Cámbialo solo si hay descuento.</Ayuda>
+            <Ayuda para="monto">Precio del plan: {plan ? formatearDinero(plan.precio) : "—"}.</Ayuda>
           </div>
         ) : (
           <div>
@@ -110,11 +142,35 @@ export function CamposDeCobro({ planes, planPreferido, puedeCambiarMonto, valore
             placeholder={puedeCambiarMonto ? "Ej. descuento de estudiante" : "Ej. pagó con billete de $1,000"}
             defaultValue={valores?.nota}
           />
-          <Ayuda para="nota" maximo={LIMITES.nota}>
-            Queda en el corte de caja junto al pago.
-          </Ayuda>
+          <Ayuda para="nota" maximo={LIMITES.nota} />
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * La fecha real del cobro. Se pinta solo al marcar la casilla (en el
+ * navegador), así el día de hoy sale de la computadora del gimnasio.
+ */
+function FechaDelCobro({ inicial }: { inicial?: string }) {
+  const [hoy] = useState(() => new Intl.DateTimeFormat("en-CA").format(new Date()));
+  const minimo = sumarDias(hoy, -DIAS_PARA_COBRO_ATRASADO);
+  return (
+    <div className="aparece max-w-xs">
+      <Etiqueta para="fecha">Fecha en que pagó</Etiqueta>
+      <CampoFecha
+        id="fecha"
+        nombre="fecha"
+        requerido
+        min={minimo}
+        max={hoy}
+        valorInicial={inicial || sumarDias(hoy, -1)}
+        describir={(f) => `Se cobró el ${describirFecha(f)}.`}
+      />
+      <Ayuda para="fecha">
+        Su membresía empieza ese día y el dinero entra en el corte de ese día, no en el de hoy. Hasta {DIAS_PARA_COBRO_ATRASADO} días atrás.
+      </Ayuda>
     </div>
   );
 }

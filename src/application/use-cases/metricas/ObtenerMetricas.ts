@@ -46,6 +46,11 @@ export interface Metricas {
   /** Entradas por día de la semana (0 = lunes) y hora (0–23), últimas 8 semanas. */
   horasPico: number[][];
   ingresos: MesDeIngresos[];
+  /**
+   * Ingresos (membresías + tienda) del mes pasado del día 1 al mismo día de
+   * hoy: el mes en curso va a medias y compararlo con un mes completo engaña.
+   */
+  ingresosMesPasadoALaFecha: number;
   socios: { activos: number; meses: MesDeSocios[] };
   productos: { masVendidos: { nombre: string; piezas: number; unidad: string; importe: number }[]; valorInventario: number };
   /** Las máquinas que más han costado en 12 meses. */
@@ -71,7 +76,11 @@ export class ObtenerMetricas {
     const inicioHorasPico = sumarDias(hoy, -(SEMANAS_HORAS_PICO * 7 - 1));
     const meses = Array.from({ length: MESES_HISTORIA }, (_, i) => sumarMeses(primerDiaDelMes(hoy), i - (MESES_HISTORIA - 1)));
 
-    const [asistencias, socios, ventas30, productos, ingresos, costoPorEquipo, equipos] = await Promise.all([
+    // Mismo día del mes pasado (31 mar → 28 feb: sumarMeses ya lo recorta al último día).
+    const mesPasado = sumarMeses(primerDiaDelMes(hoy), -1);
+    const mismoDiaMesPasado = sumarMeses(hoy, -1);
+
+    const [asistencias, socios, ventas30, productos, ingresos, costoPorEquipo, equipos, membresiasALaFecha, tiendaALaFecha] = await Promise.all([
       this.asistencias.listarEntre(inicioComparacion < inicioHorasPico ? inicioComparacion : inicioHorasPico, hoy),
       this.socios.listar(),
       this.ventas.listarEntre(inicioAsistencia, hoy),
@@ -89,6 +98,8 @@ export class ObtenerMetricas {
       ),
       this.mantenimiento.costoPorEquipo(sumarMeses(hoy, -12)),
       this.mantenimiento.listarEquipos(),
+      this.pagos.sumarEntre(mesPasado, mismoDiaMesPasado),
+      this.ventas.sumarEntre(mesPasado, mismoDiaMesPasado),
     ]);
 
     // Asistencia diaria de los últimos 30 días, con los días sin entradas en cero.
@@ -154,6 +165,7 @@ export class ObtenerMetricas {
       },
       horasPico,
       ingresos,
+      ingresosMesPasadoALaFecha: Math.round((membresiasALaFecha + tiendaALaFecha) * 100) / 100,
       socios: { activos: socios.filter((s) => s.activo).length, meses: mesesSocios },
       productos: {
         masVendidos: [...vendidos.values()].sort((a, b) => b.importe - a.importe).slice(0, 5),

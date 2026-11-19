@@ -54,7 +54,7 @@ export default async function PaginaProducto({ params, searchParams }: Props) {
 
   return (
     <div className="pagina">
-      <Encabezado
+      <Encabezado guia="producto"
         titulo={p.nombre}
         imagen={<Emblema {...dibujoDeProducto(p)} tamano="xl" apagado={!p.activo} />}
         volver={{ href: "/inventario", texto: "Inventario" }}

@@ -62,15 +62,20 @@ export function ConteoRapido({ productos }: { productos: ProductoParaContar[] })
     });
   }
 
-  const conteos = Object.entries(contados).map(([productoId, contado]) => ({ productoId, contado: Math.max(0, Math.round(contado)) }));
   const porId = new Map(productos.map((p) => [p.id, p]));
+  // Con lo contado va la existencia que se ve en pantalla: el ajuste es la diferencia contra ella.
+  const conteos = Object.entries(contados).map(([productoId, contado]) => ({
+    productoId,
+    contado: Math.max(0, Math.round(contado)),
+    esperado: porId.get(productoId)?.stock ?? 0,
+  }));
   let faltante = 0;
   let sobrante = 0;
   let diferentes = 0;
   for (const c of conteos) {
     const p = porId.get(c.productoId);
     if (!p) continue;
-    const d = c.contado - p.stock;
+    const d = c.contado - c.esperado;
     if (d !== 0) diferentes++;
     if (d < 0) faltante += -d * p.precioUnidad;
     else sobrante += d * p.precioUnidad;

@@ -25,8 +25,8 @@ export interface EquipoParaRegistrar {
   reportes: { id: string; descripcion: string }[];
 }
 
-const TIPOS: Record<TipoMantenimiento, string> = { preventivo: "Preventivo (servicio)", correctivo: "Reparación" };
-const PAGOS = { completo: "Pagado completo", anticipo: "Dejé un anticipo", a_deber: "Queda a deber" };
+const TIPOS: Record<TipoMantenimiento, string> = { preventivo: "Preventivo", correctivo: "Reparación" };
+const PAGOS = { completo: "Pagado", anticipo: "Anticipo", a_deber: "A deber" };
 
 const aNumero = (v: string) => (v.trim() === "" ? 0 : Number(v));
 
@@ -92,28 +92,22 @@ export function FormularioMantenimiento({
             <Ayuda para="equipoId" />
           </div>
           <div>
-            <Etiqueta para="fecha">¿Cuándo se hizo?</Etiqueta>
+            <Etiqueta para="fecha">Fecha</Etiqueta>
             <CampoFecha id="fecha" nombre="fecha" requerido max={hoy} min={sumarDias(hoy, -365 * LIMITES_MANTENIMIENTO.aniosAtras)} valor={fecha} alCambiar={setFecha} />
             <Ayuda para="fecha" />
           </div>
         </div>
 
         <fieldset>
-          <legend className="etiqueta">¿Qué fue?</legend>
+          <legend className="etiqueta">Tipo</legend>
           <SelectorSegmentado nombre="tipo" opciones={TIPOS} valor={tipo} alCambiar={(t) => setTipo(t as TipoMantenimiento)} />
-          <p className="mensaje-campo">
-            {tipo === "preventivo"
-              ? siguiente
-                ? `Servicio programado: limpieza, lubricación, ajustes. El siguiente quedará para el ${describirFecha(siguiente)} (${equipo?.frecuenciaTexto}).`
-                : "Servicio programado: limpieza, lubricación, ajustes."
-              : "Se descompuso algo y se arregló. No cambia la fecha del siguiente preventivo."}
-          </p>
+          {siguiente && <p className="mensaje-campo">Siguiente preventivo: {describirFecha(siguiente)}.</p>}
         </fieldset>
 
         {equipo && equipo.reportes.length > 0 && (
           <fieldset className="aparece rounded-[12px] bg-ambar-tenue/70 px-4 py-3.5">
             <legend className="sr-only">Fallas que resuelve</legend>
-            <p className="mb-2 text-[0.88rem] font-semibold">Esta máquina tiene fallas reportadas. ¿Quedaron arregladas con esto?</p>
+            <p className="mb-2 text-[0.88rem] font-semibold">Fallas reportadas: marca las que quedaron arregladas.</p>
             <div className="grid gap-2">
               {equipo.reportes.map((r) => (
                 <Casilla
@@ -127,13 +121,12 @@ export function FormularioMantenimiento({
                 </Casilla>
               ))}
             </div>
-            <p className="mt-2 text-[0.78rem] text-gris">Las que marques se cierran y la máquina vuelve a «Funcionando».</p>
           </fieldset>
         )}
 
         <div className="grid gap-5 sm:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
           <div>
-            <Etiqueta para="descripcion">¿Qué se le hizo?</Etiqueta>
+            <Etiqueta para="descripcion">Qué se le hizo</Etiqueta>
             <textarea
               id="descripcion"
               name="descripcion"
@@ -147,13 +140,11 @@ export function FormularioMantenimiento({
               data-regla="texto:3"
               data-falta="Escribe qué se le hizo."
             />
-            <Ayuda para="descripcion" maximo={LIMITES_MANTENIMIENTO.descripcion}>
-              Lo suficiente para entenderlo dentro de un año.
-            </Ayuda>
+            <Ayuda para="descripcion" maximo={LIMITES_MANTENIMIENTO.descripcion} />
           </div>
           <div>
             <Etiqueta para="proveedor" opcional={!quedaADeber}>
-              ¿Quién lo hizo?
+              Técnico o empresa
             </Etiqueta>
             <input
               id="proveedor"
@@ -172,72 +163,65 @@ export function FormularioMantenimiento({
                 <option key={p} value={p} />
               ))}
             </datalist>
-            <Ayuda para="proveedor">{quedaADeber ? "Obligatorio: así sabes a quién se le debe." : "Técnico o empresa. Si lo hizo el personal, déjalo vacío."}</Ayuda>
+            <Ayuda para="proveedor">{quedaADeber ? "Para saber a quién se le debe." : ""}</Ayuda>
           </div>
         </div>
 
         <div className="border-t border-linea pt-6">
-          <p className="rotulo mb-4">Costo</p>
+          <p className="rotulo mb-4">Costo y pago</p>
           <div className="grid gap-5 sm:grid-cols-3">
             <div>
               <Etiqueta para="manoDeObra" opcional>Mano de obra</Etiqueta>
               <CampoDinero id="manoDeObra" nombre="manoDeObra" valor={manoDeObra} alCambiar={setManoDeObra} atributos={{ "data-que": "La mano de obra" }} />
-              <Ayuda para="manoDeObra">Lo que cobra el técnico.</Ayuda>
+              <Ayuda para="manoDeObra" />
             </div>
             <div>
               <Etiqueta para="refacciones" opcional>Refacciones</Etiqueta>
               <CampoDinero id="refacciones" nombre="refacciones" valor={refacciones} alCambiar={setRefacciones} atributos={{ "data-que": "Las refacciones" }} />
-              <Ayuda para="refacciones">Piezas, banda, aceite, cables…</Ayuda>
+              <Ayuda para="refacciones" />
             </div>
             <div className="grid content-start gap-1 rounded-[12px] bg-hundido px-4 py-3">
               <span className="text-[0.8rem] font-semibold text-gris">Total</span>
               <span className="cifra text-[1.9rem] leading-none">{totalValido ? formatearDinero(total) : "—"}</span>
-              <span className="text-[0.76rem] text-gris">{conCosto ? "Mano de obra + refacciones" : "Sin costo: garantía o lo hizo el personal"}</span>
+              {!conCosto && <span className="text-[0.76rem] text-gris">Sin costo</span>}
             </div>
           </div>
         </div>
 
         {conCosto ? (
-          <div className="aparece border-t border-linea pt-6">
-            <p className="rotulo mb-4">Pago</p>
-            <div className="grid gap-5">
+          <div className="aparece grid gap-4 border-t border-dashed border-linea pt-5">
+            <div className="flex flex-wrap items-start gap-x-8 gap-y-4">
               <fieldset>
-                <legend className="etiqueta">¿Cómo quedó el pago?</legend>
+                <legend className="etiqueta">Pago</legend>
                 <SelectorSegmentado nombre="pago" opciones={PAGOS} valor={pago} alCambiar={(p) => setPago(p as keyof typeof PAGOS)} />
               </fieldset>
               {pago !== "a_deber" && (
-                <div className="grid gap-5 sm:grid-cols-2">
-                  <fieldset>
-                    <legend className="etiqueta">Se pagó con</legend>
-                    <SelectorSegmentado nombre="metodo" opciones={METODOS_PAGO} valor={metodo} alCambiar={setMetodo} />
-                    <p className="mensaje-campo">
-                      {metodo === "efectivo"
-                        ? `Sale de la caja: se resta en el corte del ${fecha === hoy ? "día de hoy" : describirFecha(fecha)}.`
-                        : "No toca la caja; queda como gasto pagado por transferencia."}
-                    </p>
-                  </fieldset>
-                  {pago === "anticipo" && (
-                    <div>
-                      <Etiqueta para="anticipo">¿Cuánto se dio de anticipo?</Etiqueta>
-                      <CampoDinero
-                        id="anticipo"
-                        nombre="anticipo"
-                        requerido
-                        valor={anticipo}
-                        alCambiar={setAnticipo}
-                        atributos={{ "data-regla": "precio", "data-que": "El anticipo", "data-falta": "Escribe cuánto se dio." }}
-                      />
-                      <Ayuda para="anticipo">{aNumero(anticipo) > 0 && aNumero(anticipo) < total ? `Quedarán ${formatearDinero(total - aNumero(anticipo))} por pagar.` : `De ${formatearDinero(total)} en total.`}</Ayuda>
-                    </div>
-                  )}
+                <fieldset>
+                  <legend className="etiqueta">Método</legend>
+                  <SelectorSegmentado nombre="metodo" opciones={METODOS_PAGO} valor={metodo} alCambiar={setMetodo} />
+                  {metodo === "efectivo" && <p className="mensaje-campo">Sale de la caja {fecha === hoy ? "de hoy" : `del ${describirFecha(fecha)}`}.</p>}
+                </fieldset>
+              )}
+              {pago === "anticipo" && (
+                <div className="w-48">
+                  <Etiqueta para="anticipo">Anticipo</Etiqueta>
+                  <CampoDinero
+                    id="anticipo"
+                    nombre="anticipo"
+                    requerido
+                    valor={anticipo}
+                    alCambiar={setAnticipo}
+                    atributos={{ "data-regla": "precio", "data-que": "El anticipo", "data-falta": "Escribe cuánto se dio." }}
+                  />
+                  <Ayuda para="anticipo" />
                 </div>
               )}
-              <p className="rounded-[10px] bg-hundido px-4 py-3 text-[0.88rem]">
-                {pago === "completo"
-                  ? `Queda pagado: ${formatearDinero(total)} en ${metodo === "efectivo" ? "efectivo" : "transferencia"}.`
-                  : `Pagado ${formatearDinero(pagado)} · por pagar ${formatearDinero(Math.max(0, total - pagado))}. Los abonos se registran después en «Por pagar».`}
-              </p>
             </div>
+            {pago !== "completo" && (
+              <p className="rounded-[10px] bg-hundido px-4 py-3 text-[0.88rem]">
+                Quedan <b className="font-semibold">{formatearDinero(Math.max(0, total - pagado))}</b> por pagar; los abonos se registran en «Por pagar».
+              </p>
+            )}
           </div>
         ) : (
           <input type="hidden" name="pago" value="a_deber" />

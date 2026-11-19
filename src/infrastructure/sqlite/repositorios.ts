@@ -16,7 +16,7 @@ import type { RegistroBitacora } from "@/domain/entities/RegistroBitacora";
 import type { DatosNuevoSocio, Socio } from "@/domain/entities/Socio";
 import type { DatosNuevaSuscripcion, Suscripcion } from "@/domain/entities/Suscripcion";
 import type { DatosNuevaVenta, Venta } from "@/domain/entities/Venta";
-import { normalizarCelular } from "@/domain/shared/reglas";
+import { LIMITES, normalizarCelular } from "@/domain/shared/reglas";
 import type { AsistenciaRepository } from "@/domain/repositories/AsistenciaRepository";
 import type { BitacoraRepository, FiltroBitacora } from "@/domain/repositories/BitacoraRepository";
 import type { InventarioRepository } from "@/domain/repositories/InventarioRepository";
@@ -88,9 +88,16 @@ const aAsistencia = (f: FilaAsistencia): Asistencia => ({
  * que la comparación se hace aquí; son pocos miles de registros a lo más.
  */
 const normalizar = (t: string) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
+/**
+ * Cada palabra buscada debe aparecer, en cualquier orden: "p\u00e9rez juan" y
+ * "juan garc\u00eda" encuentran a "Juan P\u00e9rez Garc\u00eda". Antes se buscaba la frase
+ * tal cual y, escribiendo primero el apellido, no aparec\u00eda nadie.
+ */
 const coincide = (busqueda: string, ...campos: (string | null)[]) => {
-  const b = normalizar(busqueda);
-  return campos.some((c) => c !== null && normalizar(c).includes(b));
+  const palabras = normalizar(busqueda).split(" ").filter(Boolean);
+  if (palabras.length === 0) return true;
+  const texto = normalizar(campos.filter((c): c is string => c !== null).join(" "));
+  return palabras.every((p) => texto.includes(p));
 };
 const porNombre = (a: string, b: string) => a.localeCompare(b, "es", { sensitivity: "base" });
 
@@ -101,7 +108,7 @@ export class SqliteSocioRepository implements SocioRepository {
   async listar(filtro?: { busqueda?: string }): Promise<Socio[]> {
     const texto = filtro?.busqueda?.trim();
     const todos = this.s
-      .todas<FilaSocio>("select * from socios")
+      .todas<FilaSocio>("select * from socios where eliminado_en is null")
       .map(aSocio)
       .sort((a, b) => porNombre(`${a.nombre} ${a.apellidos}`, `${b.nombre} ${b.apellidos}`));
     if (!texto) return todos;
@@ -110,25 +117,39 @@ export class SqliteSocioRepository implements SocioRepository {
     return todos.filter(
       (s) =>
         s.numero === numero ||
-        coincide(texto, s.nombre, s.apellidos, `${s.nombre} ${s.apellidos}`) ||
+        coincide(texto, s.nombre, s.apellidos) ||
         (digitos.length >= 3 && (s.telefono ?? "").replace(/\D/g, "").includes(digitos)),
     );
   }
 
   async obtenerPorId(id: string) {
-    const f = this.s.una<FilaSocio>("select * from socios where id = ?", id);
+    const f = this.s.una<FilaSocio>("select * from socios where id = ? and eliminado_en is null", id);
     return f ? aSocio(f) : null;
   }
 
   async crear(d: DatosNuevoSocio): Promise<Socio> {
     const id = nuevoId();
-    this.s.escribir(() =>
+    this.s.escribir(() => {
+      // Un número nunca se vuelve a dar: si se borra o se une un socio, su credencial
+      // impresa no debe abrir la ficha de otra persona. El último número dado se guarda
+      // en ajustes; se toma el mayor entre ese y los que ya existen (bases anteriores a
+      // este contador o un respaldo restaurado).
+      const { numero } = this.s.una<{ numero: number }>(
+        `select max(
+           coalesce((select max(numero) from socios), 0),
+           coalesce((select cast(valor as integer) from ajustes where clave = 'ultimo_numero_socio'), 0)
+         ) + 1 as numero`,
+      )!;
       this.s.ejecutar(
         `insert into socios (id, numero, nombre, apellidos, telefono, fecha_nacimiento, notas)
-         values (?, (select coalesce(max(numero), 0) + 1 from socios), ?, ?, ?, ?, ?)`,
-        id, d.nombre, d.apellidos, d.telefono ?? "", d.fechaNacimiento, d.notas,
-      ),
-    );
+         values (?, ?, ?, ?, ?, ?, ?)`,
+        id, numero, d.nombre, d.apellidos, d.telefono ?? "", d.fechaNacimiento, d.notas,
+      );
+      this.s.ejecutar(
+        "insert into ajustes (clave, valor) values ('ultimo_numero_socio', ?) on conflict (clave) do update set valor = excluded.valor",
+        String(numero),
+      );
+    });
     return (await this.obtenerPorId(id))!;
   }
 
@@ -159,7 +180,7 @@ export class SqliteSocioRepository implements SocioRepository {
   async buscarPorCelular(celular: string): Promise<Socio[]> {
     const final = celular.slice(-4);
     return this.s
-      .todas<FilaSocio>("select * from socios where telefono like ?", `%${final}`)
+      .todas<FilaSocio>("select * from socios where telefono like ? and eliminado_en is null", `%${final}`)
       .map(aSocio)
       .filter((s) => normalizarCelular(s.telefono) === celular);
   }
@@ -175,6 +196,49 @@ export class SqliteSocioRepository implements SocioRepository {
       ),
     );
   }
+
+  async unir(conservarId: string, duplicadoId: string): Promise<{ fotoSobrante: string | null }> {
+    return this.s.escribir(() => {
+      const a = this.s.una<FilaSocio>("select * from socios where id = ?", conservarId)!;
+      const b = this.s.una<FilaSocio>("select * from socios where id = ?", duplicadoId)!;
+      for (const tabla of ["suscripciones", "pagos", "asistencias"]) {
+        this.s.ejecutar(`update ${tabla} set socio_id = ? where socio_id = ?`, conservarId, duplicadoId);
+      }
+      // Un dedo solo puede estar una vez: si los dos lo registraron, se queda el del que se conserva.
+      this.s.ejecutar("delete from huellas where socio_id = ? and dedo in (select dedo from huellas where socio_id = ?)", duplicadoId, conservarId);
+      this.s.ejecutar("update huellas set socio_id = ? where socio_id = ?", conservarId, duplicadoId);
+      const notas = [a.notas, b.notas].filter((n): n is string => Boolean(n?.trim())).filter((n, i, l) => l.indexOf(n) === i).join("\n").slice(0, LIMITES.notasSocio) || null;
+      // Lo que le falte al que se conserva se toma del duplicado. Si alguno estaba activo, queda activo.
+      const activo = a.activo || b.activo;
+      this.s.ejecutar("delete from socios where id = ?", duplicadoId);
+      this.s.ejecutar(
+        `update socios set telefono = ?, fecha_nacimiento = ?, foto = ?, notas = ?, activo = ?,
+                fecha_baja = ?, motivo_baja = ? where id = ?`,
+        a.telefono || b.telefono, a.fecha_nacimiento ?? b.fecha_nacimiento, a.foto ?? b.foto, notas, activo ? 1 : 0,
+        activo ? null : a.fecha_baja, activo ? null : a.motivo_baja, conservarId,
+      );
+      return { fotoSobrante: a.foto && b.foto ? b.foto : null };
+    });
+  }
+
+  async eliminarDefinitivo(id: string): Promise<"completo" | "anonimo"> {
+    return this.s.escribir(() => {
+      const conDinero = this.s.una("select 1 as si from pagos where socio_id = ? limit 1", id);
+      if (!conDinero) {
+        // Sin dinero de por medio: se borra todo (membresías, entradas y huellas se van con él).
+        this.s.ejecutar("delete from socios where id = ?", id);
+        return "completo";
+      }
+      // Con pagos: se queda solo como "Socio eliminado" para que los cortes de esos días cuadren.
+      this.s.ejecutar("delete from huellas where socio_id = ?", id);
+      this.s.ejecutar(
+        `update socios set nombre = 'Socio', apellidos = 'eliminado', telefono = '', fecha_nacimiento = null, foto = null,
+                notas = null, activo = 0, motivo_baja = null, eliminado_en = ${"strftime('%Y-%m-%dT%H:%M:%fZ', 'now')"} where id = ?`,
+        id,
+      );
+      return "anonimo";
+    });
+  }
 }
 
 /* ── Planes ──────────────────────────────────────────────────────────── */
@@ -183,12 +247,12 @@ export class SqlitePlanRepository implements PlanRepository {
 
   async listar(filtro?: { soloActivos?: boolean }) {
     return this.s
-      .todas<FilaPlan>(`select * from planes ${filtro?.soloActivos ? "where activo = 1" : ""} order by precio`)
+      .todas<FilaPlan>(`select * from planes where eliminado_en is null ${filtro?.soloActivos ? "and activo = 1" : ""} order by precio`)
       .map(aPlan);
   }
 
   async obtenerPorId(id: string) {
-    const f = this.s.una<FilaPlan>("select * from planes where id = ?", id);
+    const f = this.s.una<FilaPlan>("select * from planes where id = ? and eliminado_en is null", id);
     return f ? aPlan(f) : null;
   }
 
@@ -202,6 +266,38 @@ export class SqlitePlanRepository implements PlanRepository {
 
   async cambiarEstado(id: string, activo: boolean) {
     this.s.escribir(() => this.s.ejecutar("update planes set activo = ? where id = ?", activo ? 1 : 0, id));
+  }
+
+  async actualizar(id: string, d: DatosNuevoPlan) {
+    this.s.escribir(() =>
+      this.s.ejecutar(
+        "update planes set nombre = ?, descripcion = ?, precio = ?, duracion = ?, unidad = ? where id = ?",
+        d.nombre, d.descripcion, d.precio, d.duracion, d.unidad, id,
+      ),
+    );
+    const plan = await this.obtenerPorId(id);
+    if (!plan) throw new NoEncontrado("El plan");
+    return plan;
+  }
+
+  async tieneSuscripciones(id: string) {
+    return Boolean(this.s.una("select 1 as si from suscripciones where plan_id = ? limit 1", id));
+  }
+
+  async idsVendidos() {
+    return this.s.todas<{ plan_id: string }>("select distinct plan_id from suscripciones").map((f) => f.plan_id);
+  }
+
+  async eliminar(id: string) {
+    return this.s.escribir((): "completo" | "conservado" => {
+      if (!this.s.una("select 1 as si from suscripciones where plan_id = ? limit 1", id)) {
+        this.s.ejecutar("delete from planes where id = ?", id);
+        return "completo";
+      }
+      // Ya se vendió: deja de existir para el programa, pero cada socio conserva su membresía.
+      this.s.ejecutar("update planes set activo = 0, eliminado_en = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') where id = ?", id);
+      return "conservado";
+    });
   }
 }
 
@@ -260,6 +356,16 @@ export class SqliteSuscripcionRepository implements SuscripcionRepository {
       );
     });
     return aSuscripcion(this.s.una<FilaSuscripcion>(`${SUSCRIPCION_CON_PLAN} where s.id = ?`, id)!);
+  }
+
+  async corregir(id: string, cambio: { planId: string; fechaFin: string }, pago: { monto: number; metodo: string }) {
+    this.s.escribir(() => {
+      this.s.ejecutar("update suscripciones set plan_id = ?, fecha_fin = ? where id = ?", cambio.planId, cambio.fechaFin, id);
+      this.s.ejecutar("update pagos set monto = ?, metodo = ? where suscripcion_id = ?", pago.monto, pago.metodo, id);
+    });
+    const s = this.s.una<FilaSuscripcion>(`${SUSCRIPCION_CON_PLAN} where s.id = ?`, id);
+    if (!s) throw new NoEncontrado("La membresía");
+    return aSuscripcion(s);
   }
 
   async anularConSuPago(id: string, asistenciaId?: string) {
@@ -354,14 +460,14 @@ export class SqliteProductoRepository implements ProductoRepository {
   async listar(filtro?: { busqueda?: string; soloActivos?: boolean }) {
     const texto = filtro?.busqueda?.trim();
     return this.s
-      .todas<FilaProducto>(`select * from productos ${filtro?.soloActivos ? "where activo = 1" : ""}`)
+      .todas<FilaProducto>(`select * from productos where eliminado_en is null ${filtro?.soloActivos ? "and activo = 1" : ""}`)
       .map(aProducto)
       .filter((p) => !texto || coincide(texto, p.nombre, p.codigo))
       .sort((a, b) => porNombre(a.nombre, b.nombre));
   }
 
   async obtenerPorId(id: string) {
-    const f = this.s.una<FilaProducto>("select * from productos where id = ?", id);
+    const f = this.s.una<FilaProducto>("select * from productos where id = ? and eliminado_en is null", id);
     return f ? aProducto(f) : null;
   }
 
@@ -375,7 +481,7 @@ export class SqliteProductoRepository implements ProductoRepository {
   }
 
   async obtenerPorCodigo(codigo: string) {
-    const f = this.s.una<FilaProducto>("select * from productos where lower(codigo) = lower(?)", codigo.trim());
+    const f = this.s.una<FilaProducto>("select * from productos where lower(codigo) = lower(?) and eliminado_en is null", codigo.trim());
     return f ? aProducto(f) : null;
   }
 
@@ -404,13 +510,20 @@ export class SqliteProductoRepository implements ProductoRepository {
     return Boolean(this.s.una("select 1 as si from movimientos_inventario where producto_id = ? and tipo = 'venta' limit 1", id));
   }
 
-  async eliminar(id: string) {
-    this.s.escribir(() => {
+  async eliminar(id: string): Promise<"completo" | "anonimo"> {
+    return this.s.escribir(() => {
       if (this.s.una("select 1 as si from movimientos_inventario where producto_id = ? and tipo = 'venta' limit 1", id)) {
-        throw new ErrorDeDominio("Este producto ya tiene ventas; no se puede eliminar.");
+        // Con ventas: el producto desaparece de todos lados, pero sus ventas siguen en los cortes con su nombre.
+        this.s.ejecutar(
+          `update productos set activo = 0, codigo = null, foto = null,
+                  eliminado_en = ${"strftime('%Y-%m-%dT%H:%M:%fZ', 'now')"} where id = ?`,
+          id,
+        );
+        return "anonimo";
       }
       this.s.ejecutar("delete from movimientos_inventario where producto_id = ?", id);
       this.s.ejecutar("delete from productos where id = ?", id);
+      return "completo";
     });
   }
 }

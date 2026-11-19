@@ -1,7 +1,7 @@
 {
   "name": "proyecto-gimnasio",
   "productName": "Olimpo GYM",
-  "version": "1.0.0-beta.12",
+  "version": "1.0.0-beta.39",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -15,10 +15,12 @@
     "escritorio:dev": "electron . --dev",
     "abrir": "npm run build:escritorio && electron .",
     "instalador": "npm run build:escritorio && electron-builder --win && node scripts/limpiar-instaladores.mjs",
-    "instalador:docker": "npm run build:escritorio && node scripts/instalador-docker.mjs && node scripts/limpiar-instaladores.mjs"
+    "instalador:docker": "npm run build:escritorio && node scripts/instalador-docker.mjs && node scripts/limpiar-instaladores.mjs",
+    "publicar": "node scripts/publicar-version.mjs"
   },
   "dependencies": {
     "fflate": "^0.8.3",
+    "koffi": "^3.3.7",
     "next": "15.5.26",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
@@ -36,7 +38,7 @@
   },
   "description": "Sistema de administración de Olimpo GYM",
   "author": "Olimpo GYM",
-  "main": "electron/main.cjs",
+  "main": "electron/arranque.cjs",
   "build": {
     "appId": "mx.olimpogym.panel",
     "productName": "Olimpo GYM",
@@ -70,6 +72,11 @@
       "include": "build/installer.nsh"
     },
     "afterPack": "scripts/despues-de-empaquetar.cjs",
-    "copyright": "© 2026 Olimpo GYM"
+    "copyright": "© 2026 Olimpo GYM",
+    "electronLanguages": [
+      "es",
+      "es-419",
+      "en-US"
+    ]
   }
 }

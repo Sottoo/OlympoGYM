@@ -19,15 +19,16 @@ import { CerrarReporte } from "../../CerrarReporte";
 import { EstadoEquipoInsignia, EstadoPagoInsignia, hace, textoPreventivo } from "../../piezas";
 import { AccionesDelEquipo } from "./AccionesDelEquipo";
 
-export const metadata: Metadata = { title: "Equipo" };
+export const metadata: Metadata = { title: "Máquina" };
 export const dynamic = "force-dynamic";
 
 const AVISOS: Record<string, string> = {
-  nuevo: "Equipo dado de alta.",
+  nuevo: "Máquina agregada.",
   editado: "Cambios guardados.",
-  baja: "Equipo dado de baja: ya no aparece para reportar fallas ni en los preventivos. Su historial se conserva.",
-  reactivado: "Equipo reactivado.",
+  baja: "Listo: quedó dada de baja. Su historial se conserva.",
+  reactivado: "Máquina reactivada.",
   reportado: "Falla reportada. La administración ya la ve en su lista.",
+  escalado: "Esa falla ya estaba reportada; ahora la máquina quedó marcada fuera de servicio.",
   "registro-eliminado": "Se eliminó el registro de mantenimiento y sus pagos.",
 };
 
@@ -49,7 +50,7 @@ export default async function PaginaEquipo({ params, searchParams }: { params: P
       <Encabezado
         titulo={e.nombre}
         imagen={<Emblema {...dibujoDeEquipo(e)} tamano="xl" apagado={!e.activo} />}
-        volver={{ href: "/mantenimiento", texto: "Mantenimiento" }}
+        volver={{ href: "/mantenimiento", texto: "Máquinas" }}
         etiquetas={<EstadoEquipoInsignia estado={f.estado} />}
         descripcion={detalle}
         acciones={
@@ -60,21 +61,13 @@ export default async function PaginaEquipo({ params, searchParams }: { params: P
                 Reportar falla
               </Link>
             )}
-            {gestiona && (
-              <>
-                <AccionesDelEquipo equipoId={e.id} nombre={e.nombre} activo={e.activo} tieneHistorial={f.tieneHistorial} />
-                <Link href={`/mantenimiento/equipos/${e.id}/editar`} className="boton-secundario">
-                  <Icono nombre="editar" className="size-4" />
-                  Editar
-                </Link>
-                {e.activo && (
-                  <Link href={`/mantenimiento/registrar?equipo=${e.id}`} className="boton">
-                    <Icono nombre="mas" className="size-4" />
-                    Registrar mantenimiento
-                  </Link>
-                )}
-              </>
+            {gestiona && e.activo && (
+              <Link href={`/mantenimiento/registrar?equipo=${e.id}`} className="boton">
+                <Icono nombre="llave" className="size-4" />
+                Registrar mantenimiento
+              </Link>
             )}
+            {gestiona && <AccionesDelEquipo equipoId={e.id} nombre={e.nombre} activo={e.activo} tieneHistorial={f.tieneHistorial} />}
           </>
         }
       />
@@ -84,8 +77,7 @@ export default async function PaginaEquipo({ params, searchParams }: { params: P
         <p role="status" className="flex items-start gap-2.5 rounded-[10px] bg-ambar-tenue px-4 py-3 text-[0.92rem]">
           <Icono nombre="alerta" className="mt-0.5 size-[18px] shrink-0 text-ambar" />
           <span>
-            <strong className="font-semibold">Este equipo está dado de baja.</strong> No aparece para reportar fallas ni en los preventivos.
-            {gestiona ? " Si vuelve a usarse, pulsa «Reactivar» arriba." : ""}
+            <strong className="font-semibold">Dada de baja.</strong> No aparece para reportar fallas ni en los preventivos.
           </span>
         </p>
       )}
@@ -124,7 +116,7 @@ export default async function PaginaEquipo({ params, searchParams }: { params: P
       />
 
       {f.reportes.length > 0 && (
-        <Panel titulo="Fallas reportadas" icono="alerta" descripcion="Pendientes de arreglar.">
+        <Panel titulo="Fallas reportadas" icono="alerta">
           <ul className="-mt-1">
             {f.reportes.map((r) => (
               <li key={r.id} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-dashed border-linea py-3 last:border-0">
@@ -152,7 +144,7 @@ export default async function PaginaEquipo({ params, searchParams }: { params: P
       )}
 
       <div className="con-lateral">
-        <PanelTabla titulo="Historial de mantenimiento" descripcion="Lo que se le ha hecho, de lo más reciente a lo más antiguo.">
+        <PanelTabla titulo="Mantenimientos">
           {f.mantenimientos.length === 0 ? (
             <div className="px-2 pb-2">
               <Vacio>
@@ -199,7 +191,7 @@ export default async function PaginaEquipo({ params, searchParams }: { params: P
         </PanelTabla>
 
         <aside className="bloques">
-          <Panel titulo="Datos del equipo">
+          <Panel titulo="Datos de la máquina">
             <dl className="grid gap-3 text-[0.9rem]">
               {[
                 ["Área", AREAS_EQUIPO[e.area]],

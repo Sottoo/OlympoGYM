@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { cache } from "react";
 import { capitalizarNombre, revisarContrasenaNueva, revisarNombre, revisarUsuario } from "@/domain/shared/reglas";
 import { ErrorDeDominio, SinPermiso } from "@/domain/shared/ErrorDeDominio";
-import { PERMISOS, type Permiso, puede, type Rol } from "@/domain/shared/permisos";
+import { limpiarPermisos, PERMISOS, type Permiso, puede, type Rol } from "@/domain/shared/permisos";
 import { entorno } from "../config/entorno";
 import { nuevoId, Sesion } from "../sqlite/baseDeDatos";
 
@@ -20,6 +20,8 @@ import { nuevoId, Sesion } from "../sqlite/baseDeDatos";
  * · Tras varios intentos fallidos, la cuenta espera unos minutos.
  * · Al crear la cuenta del administrador se entrega un código de
  *   recuperación: es la única forma de restablecer la contraseña olvidada.
+ *   El código es de esa cuenta (solo restablece la suya) y una cuenta de
+ *   administración puede pedir uno nuevo para sí misma en Mi cuenta.
  */
 
 export interface PersonalActual {
@@ -117,6 +119,22 @@ function nuevoCodigoDeRecuperacion(): string {
 
 const normalizarCodigo = (codigo: string) => codigo.toUpperCase().replace(/[^A-Z0-9]/g, "");
 
+/*
+ * El código de recuperación es de UNA cuenta de administración (la que lo
+ * recibió): solo restablece la contraseña de esa cuenta. Si la cuenta se
+ * elimina, se desactiva o pasa a recepción, el código deja de servir (lo
+ * borran los triggers de la base; ver esquema.ts, v10).
+ */
+const CLAVE_CODIGO = "codigo_recuperacion";
+const CLAVE_DUENO_CODIGO = "codigo_recuperacion_dueno";
+
+/** Guarda (cifrado) un código nuevo para la cuenta indicada. Va dentro de un `escribir`. */
+function guardarCodigoDeRecuperacion(s: Sesion, codigo: string, personalId: string) {
+  const sql = "insert into ajustes (clave, valor) values (?, ?) on conflict (clave) do update set valor = excluded.valor";
+  s.ejecutar(sql, CLAVE_CODIGO, cifrar(normalizarCodigo(codigo)));
+  s.ejecutar(sql, CLAVE_DUENO_CODIGO, personalId);
+}
+
 /* ── Sesión ──────────────────────────────────────────────────────────── */
 async function abrirSesion(personalId: string) {
   const expira = Date.now() + HORAS_SESION * 3_600_000;
@@ -129,6 +147,41 @@ async function abrirSesion(personalId: string) {
     path: "/",
     expires: new Date(expira),
   });
+}
+
+const CLAVE_PERMISOS_RECEPCION = "permisos_recepcion";
+
+/** Los permisos extra que la administración le dio a recepción (por omisión, ninguno). Una lectura por petición. */
+export const permisosExtraDeRecepcion = cache((): ReadonlySet<Permiso> => {
+  try {
+    const guardados = JSON.parse(ajuste(CLAVE_PERMISOS_RECEPCION) ?? "[]");
+    return new Set(Array.isArray(guardados) ? limpiarPermisos(guardados.map(String)) : []);
+  } catch {
+    return new Set();
+  }
+});
+
+/** Guarda los permisos extra de recepción y lo anota en la bitácora (qué tenía y qué tiene ahora). */
+export async function guardarPermisosDeRecepcion(lista: string[]): Promise<Permiso[]> {
+  const quien = await verificarPermiso("personal.gestionar");
+  const antes = [...permisosExtraDeRecepcion()].sort();
+  const ahora = limpiarPermisos(lista).sort();
+  if (JSON.stringify(antes) === JSON.stringify(ahora)) return ahora;
+  sistema.escribir(() => {
+    sistema.ejecutar(
+      "insert into ajustes (clave, valor) values (?, ?) on conflict (clave) do update set valor = excluded.valor",
+      CLAVE_PERMISOS_RECEPCION,
+      JSON.stringify(ahora),
+    );
+    sistema.ejecutar(
+      "insert into bitacora (usuario_nombre, tabla, operacion, registro_id, antes, despues) values (?, 'personal', 'cambio', ?, ?, ?)",
+      quien.nombre,
+      CLAVE_PERMISOS_RECEPCION,
+      JSON.stringify({ permisos: antes }),
+      JSON.stringify({ permisos: ahora }),
+    );
+  });
+  return ahora;
 }
 
 /** Quién está usando el programa. Se calcula una sola vez por petición. */
@@ -170,21 +223,21 @@ export async function requerirSesion(): Promise<PersonalActual> {
  */
 export async function exigirPermiso(permiso: Permiso): Promise<PersonalActual> {
   const personal = await requerirSesion();
-  if (!puede(personal.rol, permiso)) redirect(`/sin-acceso?para=${encodeURIComponent(permiso)}`);
+  if (!puede(personal.rol, permiso, permisosExtraDeRecepcion())) redirect(`/sin-acceso?para=${encodeURIComponent(permiso)}`);
   return personal;
 }
 
 /** Para acciones: sin permiso se rechaza con un mensaje que se muestra en el formulario. */
 export async function verificarPermiso(permiso: Permiso): Promise<PersonalActual> {
   const personal = await requerirSesion();
-  if (!puede(personal.rol, permiso)) throw new SinPermiso(PERMISOS[permiso]);
+  if (!puede(personal.rol, permiso, permisosExtraDeRecepcion())) throw new SinPermiso(PERMISOS[permiso]);
   return personal;
 }
 
 /** Si quien usa el programa tiene un permiso (para mostrar u ocultar botones). */
 export async function tienePermiso(permiso: Permiso): Promise<boolean> {
   const acceso = await obtenerAcceso();
-  return acceso.tipo === "autorizado" && puede(acceso.personal.rol, permiso);
+  return acceso.tipo === "autorizado" && puede(acceso.personal.rol, permiso, permisosExtraDeRecepcion());
 }
 
 export function hayCuentas(): boolean {
@@ -264,10 +317,7 @@ export async function crearAdministrador(datos: { nombre: string; usuario: strin
   const creador = new Sesion(nombre);
   creador.escribir(() => {
     creador.ejecutar("insert into personal (id, nombre, usuario, contrasena, rol) values (?, ?, ?, ?, 'administrador')", id, nombre, usuario, cifrar(datos.contrasena));
-    creador.ejecutar(
-      "insert into ajustes (clave, valor) values ('codigo_recuperacion', ?) on conflict (clave) do update set valor = excluded.valor",
-      cifrar(normalizarCodigo(codigo)),
-    );
+    guardarCodigoDeRecuperacion(creador, codigo, id);
   });
   await abrirSesion(id);
   await guardarCodigoParaMostrar(codigo, id);
@@ -303,32 +353,60 @@ export async function cambiarContrasena(personalId: string, actual: string, nuev
 }
 
 /**
- * Restablece la contraseña del administrador con el código de recuperación.
- * El código se usa una sola vez: se entrega uno nuevo.
+ * Restablece la contraseña de la cuenta dueña del código de recuperación
+ * (solo si sigue existiendo, activa y en administración). El código se usa
+ * una sola vez: se entrega uno nuevo para la misma cuenta.
  */
 export async function recuperarContrasena(codigo: string, nueva: string): Promise<string> {
   const espera = esperaRestante("recuperacion");
   if (espera > 0) throw new ErrorDeDominio(mensajeDeEspera(espera));
-  const guardado = ajuste("codigo_recuperacion");
-  if (!guardado || !coincide(normalizarCodigo(codigo), guardado)) {
+  const guardado = ajuste(CLAVE_CODIGO);
+  const duenoId = ajuste(CLAVE_DUENO_CODIGO);
+  const dueno = duenoId
+    ? sistema.una<{ id: string; nombre: string }>("select id, nombre from personal where id = ? and rol = 'administrador' and activo = 1", duenoId)
+    : null;
+  // Se compara siempre (aunque no haya código o dueño) para tardar lo mismo.
+  const correcto = coincide(normalizarCodigo(codigo), guardado ?? CIFRADO_DE_RELLENO);
+  if (!guardado || !dueno || !correcto) {
     anotarFallo("recuperacion");
     await new Promise((r) => setTimeout(r, 600));
     throw new ErrorDeDominio("El código de recuperación no es correcto.", "codigo");
   }
   intentos.delete("recuperacion");
   validarContrasena(nueva);
-  const admin = sistema.una<{ id: string; nombre: string }>("select id, nombre from personal where rol = 'administrador' and activo = 1 order by creado_en limit 1");
-  if (!admin) throw new ErrorDeDominio("No hay una cuenta de administrador.");
 
   const codigoNuevo = nuevoCodigoDeRecuperacion();
-  const s = new Sesion(admin.nombre);
+  const s = new Sesion(dueno.nombre);
   s.escribir(() => {
-    s.ejecutar("update personal set contrasena = ? where id = ?", cifrar(nueva), admin.id);
-    s.ejecutar("update ajustes set valor = ? where clave = 'codigo_recuperacion'", cifrar(normalizarCodigo(codigoNuevo)));
+    s.ejecutar("update personal set contrasena = ? where id = ?", cifrar(nueva), dueno.id);
+    guardarCodigoDeRecuperacion(s, codigoNuevo, dueno.id);
   });
-  await abrirSesion(admin.id);
-  await guardarCodigoParaMostrar(codigoNuevo, admin.id);
+  await abrirSesion(dueno.id);
+  await guardarCodigoParaMostrar(codigoNuevo, dueno.id);
   return codigoNuevo;
+}
+
+/**
+ * Una cuenta de administración se da a sí misma un código de recuperación
+ * nuevo (por ejemplo, si perdió el suyo o si el código era de otra cuenta).
+ * Pide la contraseña actual. El código anterior, sea de quien sea, deja de
+ * servir: solo hay uno vigente.
+ */
+export async function generarCodigoDeRecuperacion(contrasenaActual: string): Promise<string> {
+  const yo = await requerirSesion();
+  if (yo.rol !== "administrador") throw new SinPermiso("tener un código de recuperación");
+  const fila = sistema.una<{ contrasena: string }>("select contrasena from personal where id = ?", yo.id);
+  if (!fila || !coincide(contrasenaActual, fila.contrasena)) throw new ErrorDeDominio("La contraseña actual no es correcta.", "actual");
+  const codigo = nuevoCodigoDeRecuperacion();
+  const s = new Sesion(yo.nombre);
+  s.escribir(() => guardarCodigoDeRecuperacion(s, codigo, yo.id));
+  await guardarCodigoParaMostrar(codigo, yo.id);
+  return codigo;
+}
+
+/** Si la cuenta indicada es la dueña del código de recuperación vigente. */
+export function tieneCodigoDeRecuperacion(personalId: string): boolean {
+  return Boolean(ajuste(CLAVE_CODIGO)) && ajuste(CLAVE_DUENO_CODIGO) === personalId;
 }
 
 /* ── Cuentas del personal (solo administración) ──────────────────────── */
@@ -391,6 +469,37 @@ export async function cambiarEstadoDeCuenta(id: string, activo: boolean): Promis
   if (!activo && quedariaSinAdministracion(id)) throw new ErrorDeDominio("Debe quedar al menos una cuenta de administración activa.");
   const s = new Sesion(quien.nombre);
   s.escribir(() => s.ejecutar("update personal set activo = ? where id = ?", activo ? 1 : 0, id));
+}
+
+/** Corregir el nombre o el usuario de una cuenta. El usuario no se puede repetir. */
+export async function editarCuenta(id: string, datos: { nombre: string; usuario: string }): Promise<string> {
+  const quien = await verificarPermiso("personal.gestionar");
+  const { nombre, usuario } = validarNombreYUsuario(datos);
+  if (!sistema.una("select 1 from personal where id = ?", id)) throw new ErrorDeDominio("La cuenta no existe.");
+  if (sistema.una("select 1 from personal where usuario = ? and id <> ?", usuario, id)) {
+    throw new ErrorDeDominio(`Ya existe otra cuenta con el usuario «${usuario}». Prueba con otro.`, "usuario");
+  }
+  const s = new Sesion(quien.nombre);
+  s.escribir(() => s.ejecutar("update personal set nombre = ?, usuario = ? where id = ?", nombre, usuario, id));
+  return nombre;
+}
+
+/**
+ * Eliminar una cuenta para siempre (por ejemplo, una creada por error). Lo
+ * que hizo esa persona sigue en la bitácora con su nombre. No se puede
+ * eliminar la propia ni dejar el programa sin administración.
+ */
+export async function eliminarCuenta(id: string): Promise<string> {
+  const quien = await verificarPermiso("personal.gestionar");
+  if (id === quien.id) throw new ErrorDeDominio("No puedes eliminar tu propia cuenta.");
+  const cuenta = sistema.una<{ nombre: string; rol: Rol; activo: number }>("select nombre, rol, activo from personal where id = ?", id);
+  if (!cuenta) throw new ErrorDeDominio("La cuenta no existe.");
+  if (cuenta.rol === "administrador" && cuenta.activo && quedariaSinAdministracion(id)) {
+    throw new ErrorDeDominio("Debe quedar al menos una cuenta de administración activa.");
+  }
+  const s = new Sesion(quien.nombre);
+  s.escribir(() => s.ejecutar("delete from personal where id = ?", id));
+  return cuenta.nombre;
 }
 
 /** La administración pone una contraseña nueva a otra cuenta (por ejemplo, si recepción la olvidó). */

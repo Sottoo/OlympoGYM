@@ -88,13 +88,14 @@ export function generarRespaldo(): Uint8Array {
 
 export function guardarRespaldo(tipo: TipoRespaldo): ResultadoRespaldo {
   const datos = generarRespaldo();
-  const nombre = nombreDeRespaldo(tipo);
+  const extra = carpetaExtra();
+  // El nombre no debe pisar ningún respaldo, ni aquí ni en la carpeta extra.
+  const nombre = nombreDeRespaldo(tipo, extra ? [carpetaDeRespaldos(), extra] : [carpetaDeRespaldos()]);
   const ruta = path.join(carpetaDeRespaldos(), nombre);
   escribirSeguro(ruta, datos);
   depurar(carpetaDeRespaldos());
 
   let copiaExtra: ResultadoRespaldo["copiaExtra"] = null;
-  const extra = carpetaExtra();
   if (extra) {
     try {
       const destino = path.join(extra, nombre);
@@ -201,9 +202,14 @@ export const ultimoRespaldo = () => ajuste("ultimo_respaldo");
 /**
  * Reemplaza toda la información del programa con la de un respaldo.
  * Antes de hacerlo comprueba que el respaldo esté sano y guarda una copia de
- * la información actual, por si hubiera que regresar.
+ * la información actual, por si hubiera que regresar. Al terminar lo anota en
+ * la bitácora (ya la del respaldo): quién restauró, qué archivo y dónde quedó
+ * la copia previa.
  */
-export function restaurarRespaldo(zip: Uint8Array): { copiaPrevia: string } {
+export function restaurarRespaldo(
+  zip: Uint8Array,
+  opciones: { usuario?: string | null; archivo?: string } = {},
+): { copiaPrevia: string } {
   let archivos: Record<string, Uint8Array>;
   let total = 0;
   try {
@@ -250,6 +256,19 @@ export function restaurarRespaldo(zip: Uint8Array): { copiaPrevia: string } {
     }
     // Una llave de sesión que viniera en un respaldo viejo no se usa: se genera una nueva.
     prueba.exec("delete from ajustes where clave = 'llave_sesion'");
+    // El código de recuperación tampoco viene del respaldo: se conserva el vigente
+    // (uno ya usado no revive). Solo sirve si su cuenta existe en el respaldo,
+    // activa y en administración; si no, queda sin código hasta generar uno en Mi cuenta.
+    const codigo = ajuste("codigo_recuperacion");
+    const dueno = ajuste("codigo_recuperacion_dueno");
+    prueba.exec("delete from ajustes where clave in ('codigo_recuperacion', 'codigo_recuperacion_dueno')");
+    const duenoValido =
+      codigo && dueno && prueba.prepare("select 1 from personal where id = ? and rol = 'administrador' and activo = 1").get(dueno);
+    if (duenoValido) {
+      const guardar = prueba.prepare("insert into ajustes (clave, valor) values (?, ?)");
+      guardar.run("codigo_recuperacion", codigo);
+      guardar.run("codigo_recuperacion_dueno", dueno);
+    }
     prueba.close();
   } catch (error) {
     rmSync(temporal, { force: true });
@@ -272,17 +291,78 @@ export function restaurarRespaldo(zip: Uint8Array): { copiaPrevia: string } {
     throw new ErrorDeDominio("No se pudieron preparar las fotos del respaldo. No se cambió nada.");
   }
 
-  const copiaPrevia = guardarRespaldo("antes-de-restaurar").archivo.nombre;
+  let copiaPrevia: string;
+  try {
+    copiaPrevia = guardarRespaldo("antes-de-restaurar").archivo.nombre;
+  } catch (error) {
+    rmSync(temporal, { force: true });
+    rmSync(fotosNuevas, { recursive: true, force: true });
+    throw error;
+  }
 
   cerrarBase();
-  for (const sufijo of ["", "-wal", "-shm"]) rmSync(`${rutaBase()}${sufijo}`, { force: true });
-  renameSync(temporal, rutaBase());
-
-  const fotosViejas = `${rutaFotos()}-anteriores-${Date.now()}`;
-  if (existsSync(rutaFotos())) renameSync(rutaFotos(), fotosViejas);
-  renameSync(fotosNuevas, rutaFotos());
-  rmSync(fotosViejas, { recursive: true, force: true });
+  reemplazarBaseYFotos(temporal, fotosNuevas, copiaPrevia);
 
   baseDeDatos(); // Se vuelve a abrir (y se actualiza si el respaldo es de una versión anterior).
+  const quien = new Sesion(opciones.usuario ?? null);
+  quien.escribir(() =>
+    quien.ejecutar(
+      "insert into bitacora (usuario_nombre, tabla, operacion, registro_id, antes, despues) values (?, 'respaldos', 'cambio', ?, null, ?)",
+      opciones.usuario ?? null,
+      opciones.archivo ?? null,
+      JSON.stringify({ respaldo: opciones.archivo ?? null, copia_previa: copiaPrevia }),
+    ),
+  );
   return { copiaPrevia };
+}
+
+/**
+ * Pone la base y las fotos del respaldo en lugar de las actuales. Primero se
+ * apartan las actuales (fotos y base) y luego se ponen las nuevas; si algo
+ * falla a medio camino (por ejemplo, Windows tiene una foto abierta), se
+ * regresa todo como estaba, para que la base y las fotos nunca queden de
+ * respaldos distintos.
+ */
+function reemplazarBaseYFotos(baseNueva: string, fotosNuevas: string, copiaPrevia: string) {
+  const marca = Date.now();
+  const fotosViejas = `${rutaFotos()}-anteriores-${marca}`;
+  const baseVieja = `${rutaBase()}-anterior-${marca}`;
+  const apartados: [original: string, apartado: string][] = [];
+  const apartar = (original: string, apartado: string) => {
+    renameSync(original, apartado);
+    apartados.push([original, apartado]);
+  };
+  try {
+    if (existsSync(rutaFotos())) apartar(rutaFotos(), fotosViejas);
+    for (const sufijo of ["", "-wal", "-shm"]) {
+      if (existsSync(`${rutaBase()}${sufijo}`)) apartar(`${rutaBase()}${sufijo}`, `${baseVieja}${sufijo}`);
+    }
+    renameSync(fotosNuevas, rutaFotos());
+    renameSync(baseNueva, rutaBase());
+  } catch {
+    let regresado = true;
+    try {
+      // Lo nuevo que alcanzó a ponerse se quita, y lo apartado vuelve a su lugar.
+      if (!existsSync(baseNueva)) rmSync(rutaBase(), { force: true });
+      if (!existsSync(fotosNuevas)) rmSync(rutaFotos(), { recursive: true, force: true });
+      for (const [original, apartado] of apartados.reverse()) renameSync(apartado, original);
+    } catch {
+      regresado = false;
+    }
+    rmSync(baseNueva, { force: true });
+    rmSync(fotosNuevas, { recursive: true, force: true });
+    throw new ErrorDeDominio(
+      regresado
+        ? "No se pudo reemplazar la información (quizá otro programa tiene abierta una foto o la base). No se cambió nada; cierra los demás programas e intenta de nuevo."
+        : `No se pudo reemplazar la información y quedó a medias. Cierra el programa, vuelve a abrirlo y restaura ${copiaPrevia} para regresar a como estaba.`,
+    );
+  }
+  // Lo anterior ya está en la copia previa: se borra lo apartado (si Windows no deja, se queda ahí sin estorbar).
+  for (const [, apartado] of apartados) {
+    try {
+      rmSync(apartado, { recursive: true, force: true });
+    } catch {
+      /* se borrará a mano o en otra ocasión */
+    }
+  }
 }
