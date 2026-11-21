@@ -9,6 +9,10 @@ export interface MotorDeHuellas {
   coinciden(a: Uint8Array, b: Uint8Array): boolean;
   /** Combina varios toques del mismo dedo en una sola plantilla, más confiable. */
   combinar(muestras: Uint8Array[]): Uint8Array;
-  /** Posición, en `plantillas`, de la que corresponde a la muestra (la más parecida), o null si ninguna. */
-  identificar(muestra: Uint8Array, plantillas: Uint8Array[]): number | null;
+  /**
+   * La plantilla que corresponde a la muestra (la más parecida), o null si ninguna.
+   * `seguro`: el parecido es tan alto que se puede registrar la entrada sin que
+   * recepción confirme; si no, solo es probable y recepción confirma con la foto.
+   */
+  identificar(muestra: Uint8Array, plantillas: Uint8Array[]): { indice: number; seguro: boolean } | null;
 }

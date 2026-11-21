@@ -1,6 +1,6 @@
 import { type MetodoPago, revisarFechaDeCobro, validarNuevoPago } from "@/domain/entities/Pago";
 import { calcularFechaFin, esPlanDeVisita } from "@/domain/entities/Plan";
-import type { Suscripcion } from "@/domain/entities/Suscripcion";
+import { diaDePago, type Suscripcion } from "@/domain/entities/Suscripcion";
 import type { PlanRepository } from "@/domain/repositories/PlanRepository";
 import type { SocioRepository } from "@/domain/repositories/SocioRepository";
 import type { SuscripcionRepository } from "@/domain/repositories/SuscripcionRepository";
@@ -86,7 +86,9 @@ export class AsignarPlan {
 
     const { socioId, monto, metodo, fecha, nota } = pago;
     const datosPago = { socioId, monto, metodo, fecha, nota };
-    return this.suscripciones.crearConPago({ socioId: socio.id, planId: plan.id, fechaInicio, fechaFin: calcularFechaFin(fechaInicio, plan) }, datosPago);
+    // Si renueva sin cortar, conserva su día de pago (el 31 sigue siendo 31 después de febrero).
+    const fechaFin = calcularFechaFin(fechaInicio, plan, diaDePago(historial, fechaInicio));
+    return this.suscripciones.crearConPago({ socioId: socio.id, planId: plan.id, fechaInicio, fechaFin }, datosPago);
   }
 }
 
@@ -106,7 +108,8 @@ export class CorregirMembresia {
     const actual = await this.suscripciones.obtenerPorId(entrada.suscripcionId);
     if (!actual) throw new NoEncontrado("La membresía");
     if (actual.esVisita) throw new ErrorDeDominio("Las visitas de un día no se corrigen aquí.");
-    if (ultimaMembresia(await this.suscripciones.listarPorSocio(actual.socioId))?.id !== actual.id) throw new ErrorDeDominio("Solo se puede corregir la membresía más reciente del socio.");
+    const historial = await this.suscripciones.listarPorSocio(actual.socioId);
+    if (ultimaMembresia(historial)?.id !== actual.id) throw new ErrorDeDominio("Solo se puede corregir la membresía más reciente del socio.");
     const plan = await this.planes.obtenerPorId(entrada.planId);
     if (!plan) throw new ErrorDeDominio("Elige el plan correcto.", "planId");
     if (esPlanDeVisita(plan)) throw new ErrorDeDominio("Elige un plan de membresía, no la visita de un día.", "planId");
@@ -118,7 +121,8 @@ export class CorregirMembresia {
       fecha: actual.fechaInicio,
       nota: null,
     });
-    return this.suscripciones.corregir(actual.id, { planId: plan.id, fechaFin: calcularFechaFin(actual.fechaInicio, plan) }, { monto: pago.monto, metodo: pago.metodo });
+    const fechaFin = calcularFechaFin(actual.fechaInicio, plan, diaDePago(historial, actual.fechaInicio));
+    return this.suscripciones.corregir(actual.id, { planId: plan.id, fechaFin }, { monto: pago.monto, metodo: pago.metodo });
   }
 }
 

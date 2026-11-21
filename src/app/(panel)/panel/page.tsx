@@ -13,6 +13,7 @@ import { compararCon, EtiquetaCifra } from "@/presentation/components/Marcador";
 import { describirDiasRestantes, diaDeLaSemana, formatearDinero, formatearFecha, formatearHora, horaLocal, plural } from "@/shared/formato";
 import { Guia } from "@/presentation/components/Guia";
 import { Mostrador } from "./Mostrador";
+import { FondoDelDia } from "@/presentation/components/caja/FondoDelDia";
 
 export const metadata: Metadata = { title: "Hoy" };
 export const dynamic = "force-dynamic";
@@ -20,7 +21,7 @@ export const dynamic = "force-dynamic";
 export default async function PaginaHoy() {
   const casos = await casosDeUso();
   const gestionaMantenimiento = await tienePermiso("mantenimiento.gestionar");
-  const [r, hoy, habituales, gestionaRespaldos, maquinas, gastos, corte, salidas] = await Promise.all([
+  const [r, hoy, habituales, gestionaRespaldos, maquinas, gastos, corte, salidas, fondo, corrigeCobros] = await Promise.all([
     casos.obtenerResumen.ejecutar(),
     casos.obtenerEntradasDeHoy.ejecutar(),
     casos.obtenerHabituales.ejecutar(5),
@@ -29,11 +30,21 @@ export default async function PaginaHoy() {
     gestionaMantenimiento ? casos.obtenerResumenDeGastos.ejecutar() : null,
     casos.obtenerCorteDelDia.ejecutar(),
     casos.obtenerSalidasDelDia.ejecutar(),
+    casos.obtenerFondoDeCaja.ejecutar(),
+    tienePermiso("cobros.corregir"),
   ]);
   // Corte del día: lo que entró por el gimnasio (membresías y visitas) y por la tienda.
   const efectivoCobrado = corte.porMetodo.efectivo.tienda + corte.porMetodo.efectivo.membresias;
   const transferencias = corte.porMetodo.transferencia.tienda + corte.porMetodo.transferencia.membresias;
-  const enCaja = Math.round((efectivoCobrado - salidas.efectivo) * 100) / 100;
+  // En el cajón: el fondo con que empezó + lo cobrado en efectivo − lo que salió en pagos.
+  const enCaja = Math.round(((fondo.monto ?? 0) + efectivoCobrado - salidas.efectivo) * 100) / 100;
+  const detalleCaja = [
+    fondo.monto !== null ? `Fondo ${formatearDinero(fondo.monto)}` : "Sin fondo anotado",
+    `cobrado ${formatearDinero(efectivoCobrado)}`,
+    salidas.efectivo > 0 ? `salió ${formatearDinero(salidas.efectivo)}` : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
   const fallas = maquinas.cuentas.conFalla + maquinas.cuentas.fueraDeServicio;
   const dia = diaDeLaSemana(r.hoy);
 
@@ -121,10 +132,11 @@ export default async function PaginaHoy() {
               icono: "billete",
               valor: enCaja < 0 ? `−${formatearDinero(-enCaja)}` : formatearDinero(enCaja),
               alerta: enCaja < 0,
-              detalle: salidas.efectivo > 0 ? `Ya descuenta ${formatearDinero(salidas.efectivo)} pagados a mantenimiento` : "Lo que debe haber al cerrar",
+              detalle: detalleCaja,
             }}
           />
         </dl>
+        <FondoDelDia key={fondo.monto ?? "sin-fondo"} monto={fondo.monto} sugerido={fondo.sugerido} puedeCorregir={corrigeCobros} />
       </section>
 
       <div className="con-lateral">

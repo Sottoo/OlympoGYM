@@ -3,6 +3,7 @@ import { inflateSync } from "node:zlib";
 import koffi, { type LibraryHandle } from "koffi";
 import type { MotorDeHuellas } from "@/domain/services/MotorDeHuellas";
 import { ErrorDeDominio } from "@/domain/shared/ErrorDeDominio";
+import { anotarEnRegistroDelLector } from "./registroDelLector";
 
 /**
  * Motor de huellas FingerJet de DigitalPersona (`dpfj.dll`), el mismo del
@@ -19,12 +20,20 @@ const FORMATO_ANSI_378 = 0x001b0001;
 const PROBABILIDAD_UNO = 0x7fffffff;
 /**
  * Puntaje máximo para decir que dos plantillas son del mismo dedo (menor es
- * más parecido). Al registrar se comparan toques del mismo dedo entre sí: 1
- * falso positivo en 100 mil. Al identificar en el mostrador se compara contra
- * todos los socios, así que se exige 10 veces más: 1 en un millón por comparación.
+ * más parecido): 1 falso positivo en 100 mil comparaciones, el que recomienda
+ * DigitalPersona. Al identificar se queda con la más parecida de todas.
+ *
+ * En el mostrador hay dos niveles. Antes se exigía siempre 1 en un millón y en
+ * el gimnasio rechazaba huellas buenas («la lee pero no la reconoce»); bajarlo
+ * a 1 en 100 mil para todo haría que, con cientos de socios, alguna vez un
+ * dedo no registrado coincidiera con otro socio y entrara a su nombre solo.
+ *   · 1 en un millón o mejor: SEGURO, la entrada se registra sola.
+ *   · Entre 1 en un millón y 1 en 100 mil: PROBABLE, se abre su ficha con la
+ *     foto y recepción confirma antes de registrar.
  */
 const UMBRAL_MISMO_DEDO = Math.floor(PROBABILIDAD_UNO / 100_000);
-const UMBRAL_IDENTIFICAR = Math.floor(PROBABILIDAD_UNO / 1_000_000);
+const UMBRAL_IDENTIFICAR = UMBRAL_MISMO_DEDO;
+const UMBRAL_SEGURO = Math.floor(PROBABILIDAD_UNO / 1_000_000);
 /** El U.are.U 4500 entrega imágenes de 500 puntos por pulgada. */
 const DPI_DEL_LECTOR = 500;
 const TAMANO_MAXIMO_PLANTILLA = 4096;
@@ -74,7 +83,10 @@ export class MotorFingerJet implements MotorDeHuellas {
     const salida = Buffer.alloc(TAMANO_MAXIMO_PLANTILLA);
     const tamano = [salida.length];
     const r = funciones().crearDesdeImagen(gris, gris.length, ancho, alto, DPI_DEL_LECTOR, 0, 0, FORMATO_ANSI_378, salida, tamano);
-    if (r !== 0) throw new ErrorDeDominio("No se leyó bien la huella. Pon el dedo otra vez, plano y sin moverlo.");
+    if (r !== 0) {
+      anotarEnRegistroDelLector(`imagen ${ancho}x${alto}: el motor no pudo sacar la plantilla (código 0x${(r >>> 0).toString(16)})`);
+      throw new ErrorDeDominio("No se leyó bien la huella. Pon el dedo otra vez, plano y sin moverlo.");
+    }
     return new Uint8Array(salida.subarray(0, tamano[0]));
   }
 
@@ -103,17 +115,26 @@ export class MotorFingerJet implements MotorDeHuellas {
     }
   }
 
-  identificar(muestra: Uint8Array, plantillas: Uint8Array[]): number | null {
-    let indice: number | null = null;
+  identificar(muestra: Uint8Array, plantillas: Uint8Array[]): { indice: number; seguro: boolean } | null {
+    let masParecida: number | null = null;
     let menor = Infinity;
+    let fallidas = 0;
     for (let i = 0; i < plantillas.length; i++) {
       const puntaje = this.puntaje(muestra, plantillas[i]);
-      if (puntaje !== null && puntaje <= UMBRAL_IDENTIFICAR && puntaje < menor) {
-        indice = i;
+      if (puntaje === null) fallidas++;
+      else if (puntaje < menor) {
+        masParecida = i;
         menor = puntaje;
       }
     }
-    return indice;
+    const coincide = masParecida !== null && menor <= UMBRAL_IDENTIFICAR;
+    const seguro = coincide && menor <= UMBRAL_SEGURO;
+    // Para diagnosticar: qué tan parecida fue la mejor («1 en N» falsos positivos; arriba de 100 000 es coincidencia).
+    const parecido = masParecida === null ? "ninguna comparable" : menor === 0 ? "idéntica" : `1 en ${Math.round(PROBABILIDAD_UNO / menor).toLocaleString("es-MX")}`;
+    anotarEnRegistroDelLector(
+      `comparó contra ${plantillas.length} huellas${fallidas ? ` (${fallidas} no se pudieron comparar)` : ""}: ${seguro ? "COINCIDE (segura)" : coincide ? "COINCIDE (probable, confirma recepción)" : "no coincide"}, la más parecida ${parecido}`,
+    );
+    return coincide && masParecida !== null ? { indice: masParecida, seguro } : null;
   }
 
   /** Qué tan distintas son (0 = idénticas), o null si el motor no pudo compararlas. */

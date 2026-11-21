@@ -64,6 +64,7 @@ const aPlan = (f: FilaPlan): Plan => ({
 const aSuscripcion = (f: FilaSuscripcion): Suscripcion => ({
   id: f.id, socioId: f.socio_id, planId: f.plan_id, planNombre: f.plan_nombre ?? "Plan", fechaInicio: f.fecha_inicio, fechaFin: f.fecha_fin, creadoEn: f.creado_en,
   esVisita: f.plan_unidad === "dias" && f.plan_duracion === 1,
+  porMeses: f.plan_unidad === "meses",
 });
 const aPago = (f: FilaPago): Pago => ({
   id: f.id, socioId: f.socio_id, suscripcionId: f.suscripcion_id, monto: f.monto, metodo: f.metodo, fecha: f.fecha, nota: f.nota, creadoEn: f.creado_en,

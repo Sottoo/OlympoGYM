@@ -56,8 +56,10 @@ export class RegistrarHuella {
     // Una huella no puede quedar a nombre de dos socios: el mostrador no sabría a quién registrar.
     const guardadas = (await this.huellas.plantillas()).filter((p) => !(p.socioId === socio.id && p.dedo === datos.dedo));
     const igual = this.motor.identificar(plantilla, guardadas.map((p) => p.plantilla));
-    if (igual !== null) {
-      const dueno = guardadas[igual];
+    // Solo una coincidencia segura cuenta como repetida (la misma exigencia de siempre): con una
+    // apenas probable se rechazaría por error el dedo de un socio nuevo.
+    if (igual?.seguro) {
+      const dueno = guardadas[igual.indice];
       if (dueno.socioId === socio.id) throw new ErrorDeDominio(`Ese dedo ya está registrado como «${DEDOS[dueno.dedo]}». Elige el dedo correcto o borra la otra huella.`);
       const otro = await this.socios.obtenerPorId(dueno.socioId);
       throw new ErrorDeDominio(`Esa huella ya está registrada a nombre de ${otro ? nombreCompleto(otro) : "otro socio"}.`);
@@ -73,14 +75,17 @@ export class IdentificarPorHuella {
     private readonly motor: MotorDeHuellas,
   ) {}
 
-  /** Id del socio dueño de la huella. Si nadie coincide, lanza un error para mostrar en el mostrador. */
-  async ejecutar(imagen: Uint8Array): Promise<string> {
+  /**
+   * El socio dueño de la huella y si es seguro (se registra solo) o solo probable
+   * (recepción confirma con la foto). Si nadie coincide, lanza un error para el mostrador.
+   */
+  async ejecutar(imagen: Uint8Array): Promise<{ socioId: string; seguro: boolean }> {
     const muestra = this.motor.plantillaDeImagen(imagen);
     const guardadas = await this.huellas.plantillas();
     if (guardadas.length === 0) throw new ErrorDeDominio("Todavía no hay huellas registradas. Regístralas desde la ficha de cada socio.");
-    const i = this.motor.identificar(muestra, guardadas.map((p) => p.plantilla));
-    if (i === null) throw new ErrorDeDominio("No se reconoció la huella. Pide que ponga el dedo otra vez o búscalo por nombre.");
-    return guardadas[i].socioId;
+    const igual = this.motor.identificar(muestra, guardadas.map((p) => p.plantilla));
+    if (igual === null) throw new ErrorDeDominio("No se reconoció la huella. Pide que ponga el dedo otra vez o búscalo por nombre.");
+    return { socioId: guardadas[igual.indice].socioId, seguro: igual.seguro };
   }
 }
 

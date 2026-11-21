@@ -21,6 +21,7 @@ import { EtiquetaCifra } from "@/presentation/components/Marcador";
 import { describirDiasRestantes, fechaLocal, horaLocal, formatearDinero, formatearFecha, formatearFechaLarga, formatearTelefono, plural } from "@/shared/formato";
 import { accionReactivarSocio } from "../acciones";
 import { FormularioAsignarPlan } from "./FormularioAsignarPlan";
+import { CobrarVisitaDeHoy } from "./CobrarVisitaDeHoy";
 import { BotonCancelarMembresia } from "./BotonCancelarMembresia";
 import { AccionesDelSocio } from "./AccionesDelSocio";
 import { Guia } from "@/presentation/components/Guia";
@@ -35,6 +36,7 @@ const AVISOS: Record<string, string> = {
   "nuevo-visita": "Socio registrado: su visita de hoy quedó cobrada y su entrada anotada.",
   "nuevo-visita-sin-foto": "Socio registrado con su visita de hoy cobrada, pero la foto no se pudo guardar. Agrégala desde Editar datos.",
   pagado: "Pago registrado y plan activado.",
+  visita: "Visita cobrada y entrada de hoy registrada.",
   editado: "Datos actualizados.",
   baja: "Listo: quedó en espera (dado de baja).",
   reactivado: "Socio reactivado. Si regresa a entrenar, asígnale un plan.",
@@ -67,7 +69,9 @@ export default async function PaginaSocio({ params, searchParams }: Props) {
   ]);
   // Otros registros con el mismo nombre: posibles inscripciones dobles para unir.
   const repetidos = ((await casos.detectarDuplicados.ejecutar()).find((g) => g.some((p) => p.id === id)) ?? []).filter((p) => p.id !== id);
-  // La visita de 1 día se cobra en el mostrador, no aquí: no es una membresía.
+  // La visita de 1 día no es una membresía: no va en la lista de planes, se cobra aparte (aquí o en el mostrador).
+  // Es la misma que cobra el mostrador: el plan activo de 1 día más barato.
+  const visita = planes.filter((p) => p.activo && esPlanDeVisita(p)).sort((a, b) => a.precio - b.precio)[0];
   const planesDeMembresia = planes.filter((p) => !esPlanDeVisita(p)).map((p) => ({ id: p.id, nombre: p.nombre, precio: p.precio, duracion: describirDuracion(p) }));
   const hoy = new Intl.DateTimeFormat("en-CA", { timeZone: entorno.zonaHoraria }).format(new Date());
   const { socio, fotoUrl, edad, cumpleHoy, membresia, planActual, deVisita, suscripciones, pagos } = detalle;
@@ -302,18 +306,22 @@ export default async function PaginaSocio({ params, searchParams }: Props) {
                 Se podrá renovar a partir del <b className="font-semibold text-tinta">{formatearFecha(pagadaHasta.fechaFin)}</b>, su último día.
               </p>
             ) : socio.activo ? (
-              <FormularioAsignarPlan
-                // Si cambia la lista de planes, el formulario empieza de nuevo con ella.
-                key={planesDeMembresia.map((p) => p.id).join()}
-                socioId={socio.id}
-                esRenovacion={vigente}
-                planPreferido={suscripciones.find((s) => !s.esVisita)?.planId}
-                puedeCambiarMonto={cambiaMonto}
-                puedeCambiarFecha={corrigeCobros}
-                creaPlanes={creaPlanes}
-                visitaHoy={deVisita}
-                planes={planesDeMembresia}
-              />
+              <>
+                <FormularioAsignarPlan
+                  // Si cambia la lista de planes, el formulario empieza de nuevo con ella.
+                  key={planesDeMembresia.map((p) => p.id).join()}
+                  socioId={socio.id}
+                  esRenovacion={vigente}
+                  planPreferido={suscripciones.find((s) => !s.esVisita)?.planId}
+                  puedeCambiarMonto={cambiaMonto}
+                  puedeCambiarFecha={corrigeCobros}
+                  creaPlanes={creaPlanes}
+                  visitaHoy={deVisita}
+                  planes={planesDeMembresia}
+                />
+                {/* Sin membresía vigente y sin visita pagada hoy: también se le puede cobrar solo el día. */}
+                {!vigente && !deVisita && visita && <CobrarVisitaDeHoy socioId={socio.id} nombre={socio.nombre.split(" ")[0]} precio={visita.precio} />}
+              </>
             ) : (
               <p className="text-gris">Para asignarle un plan primero hay que reactivarlo{gestionaBajas ? "" : " (lo hace la administración)"}.</p>
             )}

@@ -19,6 +19,8 @@ import {
   RegistrarEntrada,
 } from "@/application/use-cases/asistencias/Mostrador";
 import { ConsultarBitacora } from "@/application/use-cases/bitacora/ConsultarBitacora";
+import { GuardarFondoDeCaja, ObtenerFondoDeCaja } from "@/application/use-cases/caja/FondoDeCaja";
+import type { FondoDeCajaRepository } from "@/domain/repositories/FondoDeCajaRepository";
 import { BorrarHuella, IdentificarPorHuella, LeerToque, ListarHuellasDeSocio, RegistrarHuella } from "@/application/use-cases/huellas/Huellas";
 import { ObtenerResumen } from "@/application/use-cases/dashboard/ObtenerResumen";
 import { ObtenerMetricas } from "@/application/use-cases/metricas/ObtenerMetricas";
@@ -109,6 +111,7 @@ import {
 } from "./sqlite/repositorios";
 import { SqliteMantenimientoRepository } from "./sqlite/mantenimiento";
 import { SqliteHuellaRepository } from "./sqlite/huellas";
+import { SqliteFondoDeCajaRepository } from "./sqlite/fondosDeCaja";
 import { MotorFingerJet } from "./huellas/FingerJet";
 import { RelojSistema } from "./RelojSistema";
 
@@ -125,6 +128,7 @@ interface Repositorios {
   bitacora: BitacoraRepository;
   mantenimiento: MantenimientoRepository;
   huellas: HuellaRepository;
+  fondos: FondoDeCajaRepository;
 }
 
 /** Repositorios sobre la base local, con el nombre de quien escribe (para la bitácora). */
@@ -143,6 +147,7 @@ function repositoriosLocales(usuario: string): Repositorios {
     bitacora: new SqliteBitacoraRepository(s),
     mantenimiento: new SqliteMantenimientoRepository(s),
     huellas: new SqliteHuellaRepository(s),
+    fondos: new SqliteFondoDeCajaRepository(s),
   };
 }
 
@@ -227,6 +232,8 @@ export const casosDeUso = cache(async () => {
     obtenerPopularidad: new ObtenerPopularidad(r.inventario, reloj),
     registrarVenta: new RegistrarVenta(r.productos, r.ventas, reloj),
     obtenerCorteDelDia: new ObtenerCorteDelDia(r.ventas, r.pagos, reloj),
+    obtenerFondoDeCaja: new ObtenerFondoDeCaja(r.fondos, reloj),
+    guardarFondoDeCaja: new GuardarFondoDeCaja(r.fondos, reloj, puede(rol, "cobros.corregir", extras)),
     // Mostrador y asistencias
     buscarSocioEnMostrador: new BuscarSocioEnMostrador(r.socios, r.suscripciones, reloj),
     consultarFichaDeEntrada,

@@ -13,6 +13,7 @@ import { diaDeLaSemana, fechaLocal, formatearDinero, formatearFechaLarga, format
 import { describirPartida } from "@/domain/entities/Venta";
 import { PuntoDeVenta } from "./PuntoDeVenta";
 
+import { FondoDelDia } from "@/presentation/components/caja/FondoDelDia";
 export const metadata: Metadata = { title: "Tienda" };
 export const dynamic = "force-dynamic";
 
@@ -30,9 +31,11 @@ export default async function PaginaVentas({ searchParams }: { searchParams: Pro
   const hoy = corteHoy.fecha;
   // Recepción solo ve el corte de su día; los días anteriores son de la administración.
   const dia = veOtrosDias && fecha && esFechaValida(fecha) && fecha <= hoy ? fecha : hoy;
-  const [corte, salidas, veMantenimiento, corteSemanaPasada] = await Promise.all([
+  const [corte, salidas, fondo, corrigeCobros, veMantenimiento, corteSemanaPasada] = await Promise.all([
     dia === hoy ? corteHoy : casos.obtenerCorteDelDia.ejecutar(dia),
     casos.obtenerSalidasDelDia.ejecutar(dia),
+    casos.obtenerFondoDeCaja.ejecutar(dia),
+    tienePermiso("cobros.corregir"),
     tienePermiso("mantenimiento.gestionar"),
     // Para comparar: el mismo día de la semana pasada (solo quien ve el dinero de otros días).
     veOtrosDias ? casos.obtenerCorteDelDia.ejecutar(sumarDias(dia, -7)) : null,
@@ -53,7 +56,8 @@ export default async function PaginaVentas({ searchParams }: { searchParams: Pro
         ) / 100
       : corteSemanaPasada.total;
   const efectivoCobrado = corte.porMetodo.efectivo.tienda + corte.porMetodo.efectivo.membresias;
-  const enCaja = Math.round((efectivoCobrado - salidas.efectivo) * 100) / 100;
+  // En el cajón: el fondo con que empezó + lo cobrado en efectivo − lo que salió en pagos.
+  const enCaja = Math.round(((fondo.monto ?? 0) + efectivoCobrado - salidas.efectivo) * 100) / 100;
 
   const vendibles = productos
     .map(({ producto: p }) => ({
@@ -152,13 +156,19 @@ export default async function PaginaVentas({ searchParams }: { searchParams: Pro
                 detalle: tienda + membresias > 0 ? `Tienda ${formatearDinero(tienda)} · Membresías ${formatearDinero(membresias)}` : "Sin cobros todavía",
               };
             }),
-            ...(salidas.pagos.length > 0
+            ...(fondo.monto !== null || salidas.pagos.length > 0
               ? [
                   {
-                    etiqueta: "Efectivo neto del día", icono: "check" as const,
+                    etiqueta: "Efectivo en caja", icono: "check" as const,
                     valor: enCaja < 0 ? `−${formatearDinero(-enCaja)}` : formatearDinero(enCaja),
                     alerta: enCaja < 0,
-                    detalle: `Entró ${formatearDinero(efectivoCobrado)} · salió ${formatearDinero(salidas.efectivo)} en pagos`,
+                    detalle: [
+                      fondo.monto !== null ? `Fondo ${formatearDinero(fondo.monto)}` : "Sin fondo anotado",
+                      `entró ${formatearDinero(efectivoCobrado)}`,
+                      salidas.efectivo > 0 ? `salió ${formatearDinero(salidas.efectivo)} en pagos` : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" · "),
                   },
                 ]
               : []),
@@ -166,9 +176,11 @@ export default async function PaginaVentas({ searchParams }: { searchParams: Pro
         />
         <p className="ayuda -mt-1">
           Incluye lo cobrado en la tienda y las membresías y visitas cobradas ese día, para cuadrar la caja.
-          {salidas.efectivo > 0 &&
-            " Al efectivo se le restan los pagos de mantenimiento que salieron de la caja; si manejas fondo de caja, súmalo para saber cuánto debe haber en el cajón."}
+          {" «Efectivo en caja» es lo que debe haber en el cajón: el fondo con que empezó, más el efectivo cobrado"}
+          {salidas.efectivo > 0 ? ", menos los pagos de mantenimiento que salieron de la caja." : "."}
         </p>
+        {esHoy && <FondoDelDia key={fondo.monto ?? "sin-fondo"} monto={fondo.monto} sugerido={fondo.sugerido} puedeCorregir={corrigeCobros} />}
+        {!esHoy && fondo.monto === null && <p className="ayuda -mt-1">Ese día no se anotó el fondo de caja.</p>}
 
         <h3 className="rotulo pt-2">
           Tienda · {corte.ventas.length} {corte.ventas.length === 1 ? "venta" : "ventas"} · {corte.piezas} {corte.piezas === 1 ? "artículo" : "artículos"}

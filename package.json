@@ -1,7 +1,7 @@
 {
   "name": "proyecto-gimnasio",
   "productName": "Olimpo GYM",
-  "version": "1.0.0-beta.39",
+  "version": "1.0.0-beta.40",
   "private": true,
   "scripts": {
     "dev": "next dev",

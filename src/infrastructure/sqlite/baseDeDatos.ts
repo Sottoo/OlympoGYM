@@ -5,6 +5,7 @@ import { ErrorDeDominio } from "@/domain/shared/ErrorDeDominio";
 import { entorno } from "../config/entorno";
 import { respaldoAntesDeActualizar } from "../respaldo/paquete";
 import { MIGRACIONES } from "./esquema";
+import { ajustarDatos } from "./ajustesDeDatos";
 import { rutaBase, rutaFotos } from "./rutas";
 
 /**
@@ -25,6 +26,7 @@ function abrir(): DatabaseSync {
   const db = new DatabaseSync(rutaBase());
   db.exec("pragma journal_mode = wal; pragma foreign_keys = on; pragma busy_timeout = 5000; pragma synchronous = full;");
   migrar(db);
+  ajustarDatos(db);
   return db;
 }
 

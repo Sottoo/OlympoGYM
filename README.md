@@ -80,6 +80,8 @@ sequenceDiagram
 
 - **Una sola conexión por ventana.** Las pantallas solo se suscriben; la última abierta recibe las huellas.
 - **Si el servicio de HID se reinicia** (por ejemplo, al despertar la computadora), abre otro puerto con otra clave. Los scripts de HID guardan los anteriores, así que cada reconexión los borra y los vuelve a pedir.
+- **Dos niveles de parecido:** si la huella es casi idéntica (1 falso positivo en un millón) la entrada se registra sola; si solo es probable (hasta 1 en 100 mil, lo que recomienda DigitalPersona) se abre la ficha del socio y recepción confirma con la foto. Así reconoce más huellas sin que alguien entre a nombre de otro (`src/infrastructure/huellas/FingerJet.ts`).
+- **Diagnóstico:** cada huella que llega al mostrador queda anotada en `huellas.log`, junto a la base (`%APPDATA%\Olimpo GYM\datos`): si coincidió, qué tan parecida fue la más cercana o por qué no sirvió la imagen. Nunca guarda imágenes ni plantillas. Si alguien dice «la lee pero no la reconoce» y no hay líneas, la huella nunca llegó al programa.
 - Mientras el servicio no conteste, el programa reintenta cada 5 s. **Reiniciar** hace una reconexión a la vez, aunque se apriete varias veces.
 - **Con Smart App Control activado**, el instalador de HID falla en el paso `StopAgent` (usa una DLL sin firma). Se puede instalar el `.msi` de HID con un *transform* que quita solo ese paso; todo lo que queda instalado está firmado.
 

@@ -59,7 +59,12 @@ export function FormularioPlan({ plan, vendido = false }: { plan?: Plan; vendido
   // Lo que se envía: la visita siempre es 1 día; una duración rápida, la suya; «Otra», lo escrito.
   const [envDuracion, envUnidad] =
     tipo === "visita" ? ["1", "dias" as UnidadDuracion] : rapida === "otra" ? [duracion, unidad] : (rapida.split("-") as [string, UnidadDuracion]);
-  const dias = (Number(envDuracion) || 0) * DIAS_POR_UNIDAD[envUnidad];
+  const cantidad = Number(envDuracion) || 0;
+  // Los meses van por día del mes (paga el 7, vuelve a pagar el 7); días y semanas, días exactos.
+  const ayudaDuracion =
+    envUnidad === "meses"
+      ? cantidad >= 1 ? `Se paga el mismo día de cada ${cantidad === 1 ? "mes" : `${cantidad} meses`}: si empieza el 7, vuelve a pagar el 7.` : ""
+      : cantidad * DIAS_POR_UNIDAD[envUnidad] > 1 ? `Dura ${cantidad * DIAS_POR_UNIDAD[envUnidad]} días.` : "";
 
   return (
     <Formulario action={accion} estado={estado} className="grid gap-5">
@@ -149,7 +154,7 @@ export function FormularioPlan({ plan, vendido = false }: { plan?: Plan; vendido
               />
             </div>
           )}
-          <Ayuda para="duracion">{dias > 1 ? `Dura ${dias} días.` : ""}</Ayuda>
+          <Ayuda para="duracion">{ayudaDuracion}</Ayuda>
         </fieldset>
       )}
       {fijo ? (

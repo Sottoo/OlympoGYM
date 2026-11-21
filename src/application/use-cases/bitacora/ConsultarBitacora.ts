@@ -84,7 +84,10 @@ function describir(r: RegistroBitacora): string {
       return r.operacion === "alta" && texto(d.fecha_fin)
         ? `Activó una membresía hasta el ${formatearFecha(texto(d.fecha_fin))}`
         : r.operacion === "eliminacion" ? "Eliminó una membresía"
-        : r.antes?.plan_id !== r.despues?.plan_id ? `Corrigió el plan de una membresía (ahora vence el ${formatearFecha(texto(d.fecha_fin))})` : "Modificó una membresía";
+        : r.antes?.plan_id !== r.despues?.plan_id ? `Corrigió el plan de una membresía (ahora vence el ${formatearFecha(texto(d.fecha_fin))})`
+        : r.antes?.fecha_fin !== r.despues?.fecha_fin && texto(r.antes?.fecha_fin)
+          ? `Cambió el vencimiento de una membresía: del ${formatearFecha(texto(r.antes?.fecha_fin))} al ${formatearFecha(texto(d.fecha_fin))}`
+          : "Modificó una membresía";
     case "ventas":
       return r.operacion === "alta" ? `Registró una venta de ${dinero(d.total)} ${conMetodo(texto(d.metodo))}` : `Modificó una venta de ${dinero(d.total)}`;
     case "movimientos_inventario": {
@@ -159,6 +162,10 @@ function describir(r: RegistroBitacora): string {
       if (r.operacion === "eliminacion") return `Borró la huella${de} (${dedo})`;
       return `Volvió a registrar la huella${de} (${dedo})`;
     }
+    case "fondos_de_caja":
+      return r.operacion === "alta"
+        ? `Anotó el fondo de caja del ${texto(d.fecha)}: ${dinero(d.monto)}`
+        : `Corrigió el fondo de caja del ${texto(d.fecha)}: de ${dinero(r.antes?.monto)} a ${dinero(d.monto)}`;
     case "respaldos": {
       const archivo = texto(d.respaldo);
       const copia = texto(d.copia_previa);

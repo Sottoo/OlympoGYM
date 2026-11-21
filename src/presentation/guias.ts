@@ -39,7 +39,7 @@ export const GUIAS = {
       "Al cerrar, cuenta el efectivo y compáralo con «Efectivo en caja». «Ver detalle» abre el corte completo.",
     ],
     registro: "Cada entrada queda con fecha, hora y quién la registró. Cada cobro entra al corte del día.",
-    reglas: ["Nadie pasa sin membresía vigente o visita pagada.", "El aviso de vencimiento sale un día antes: el día 29 de la mensualidad de 30 días."],
+    reglas: ["Nadie pasa sin membresía vigente o visita pagada.", "El aviso de vencimiento sale un día antes de su último día: quien pagó el 7 lo ve desde el día 5 del mes siguiente."],
   },
   entradas: {
     clave: "P-02",
@@ -155,7 +155,7 @@ export const GUIAS = {
     que: "El catálogo de lo que se cobra: membresías y la visita de un día.",
     quien: "Administración.",
     pasos: [
-      "En «Nuevo plan», elige el tipo (membresía o visita de un día), ponle nombre y precio y, si es membresía, su duración. Un mes cuenta 30 días exactos.",
+      "En «Nuevo plan», elige el tipo (membresía o visita de un día), ponle nombre y precio y, si es membresía, su duración. Los meses van por día del mes: quien paga el 7 vuelve a pagar el 7 (si un mes no trae su día, ese mes paga el último).",
       "Usa «Editar» para cambiar nombre, precio, duración o descripción.",
       "En «Más», «Desactivar» deja de venderlo sin borrar nada; «Eliminar para siempre» lo quita de la lista.",
     ],

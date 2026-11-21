@@ -69,28 +69,49 @@ export function Mostrador({
   const [resaltado, setResaltado] = useState(0);
   const [ficha, setFicha] = useState<FichaDeEntrada | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** La ficha abierta llegó por una huella solo probable: recepción confirma con la foto. */
+  const [confirmarHuella, setConfirmarHuella] = useState(false);
   const [registro, setRegistro] = useState<Registro | null>(null);
   const [guardando, iniciar] = useTransition();
   const [consultando, setConsultando] = useState(false);
   const trabajando = guardando || consultando;
   const busquedaEnCurso = useRef<AbortController | null>(null);
   const identificando = useRef(false);
+  /** Huella que llegó mientras se guardaba la entrada anterior: se atiende en cuanto termine. */
+  const huellaEnEspera = useRef<string | null>(null);
 
   // Lector de huellas: quien pone el dedo se identifica igual que con la credencial escaneada.
-  const { estado: lector, reconectar: reconectarLector } = useLectorDeHuellas(async (imagen) => {
-    if (identificando.current || guardando) return;
+  const { estado: lector, reconectar: reconectarLector } = useLectorDeHuellas(identificarHuella, true, (texto) => {
+    if (!identificando.current) setError(texto);
+  });
+
+  // Antes, una huella que llegaba mientras se guardaba la entrada anterior se tiraba sin
+  // avisar: el lector la leía y no pasaba nada («se bloquea»). Ahora espera su turno.
+  useEffect(() => {
+    if (guardando || !huellaEnEspera.current) return;
+    const imagen = huellaEnEspera.current;
+    huellaEnEspera.current = null;
+    void identificarHuella(imagen);
+    // Solo depende de «guardando»: se revisa justo cuando termina de guardar.
+  }, [guardando]);
+
+  async function identificarHuella(imagen: string) {
+    if (identificando.current) return;
+    if (guardando) {
+      huellaEnEspera.current = imagen;
+      return;
+    }
     identificando.current = true;
     setError(null);
     setConsultando(true);
-    const r = await enviar<{ socioId: string }>("/api/huellas/identificar", { imagen });
+    const r = await enviar<{ socioId: string; seguro: boolean }>("/api/huellas/identificar", { imagen });
     setConsultando(false);
     identificando.current = false;
     if (!r.ok) return setError(r.error);
     setTexto("");
-    abrirFicha(r.valor.socioId, true);
-  }, true, (texto) => {
-    if (!identificando.current) setError(texto);
-  });
+    // Segura: se registra sola como con la credencial. Probable: se abre su ficha y recepción confirma.
+    abrirFicha(r.valor.socioId, r.valor.seguro, !r.valor.seguro);
+  }
 
   // Búsqueda mientras se escribe: una pausa corta y, si se sigue escribiendo,
   // la consulta anterior se cancela. Va por GET, así nunca bloquea los botones.
@@ -122,11 +143,13 @@ export function Mostrador({
     setCandidatos([]);
     setFicha(null);
     setError(null);
+    setConfirmarHuella(false);
     campo.current?.focus();
   }
 
-  async function abrirFicha(socioId: string, registrarSiPuede = false) {
+  async function abrirFicha(socioId: string, registrarSiPuede = false, porHuellaProbable = false) {
     setError(null);
+    setConfirmarHuella(false);
     setConsultando(true);
     const r = await consultar<FichaDeEntrada>(`/api/mostrador/ficha/${encodeURIComponent(socioId)}`);
     setConsultando(false);
@@ -134,6 +157,7 @@ export function Mostrador({
     setCandidatos([]);
     if (registrarSiPuede && r.valor.veredicto.tipo === "puede_pasar") return registrar(r.valor);
     setFicha(r.valor);
+    setConfirmarHuella(porHuellaProbable);
   }
 
   function registrar(f: FichaDeEntrada) {
@@ -176,6 +200,7 @@ export function Mostrador({
     });
     setTexto("");
     setFicha(null);
+    setConfirmarHuella(false);
     campo.current?.focus();
   }
 
@@ -311,6 +336,13 @@ export function Mostrador({
         <p role="alert" className="aparece mt-4 flex items-center gap-2.5 rounded-[10px] bg-rojo-tenue px-4 py-3 text-[0.9rem] font-semibold text-rojo">
           <Icono nombre="alerta" className="size-5" />
           {error}
+        </p>
+      )}
+
+      {ficha && confirmarHuella && (
+        <p role="status" className="aparece mt-4 flex items-center gap-2.5 rounded-[10px] bg-ambar-tenue px-4 py-3 text-[0.9rem] font-semibold">
+          <Icono nombre="alerta" className="size-5 shrink-0 text-ambar" />
+          La huella se parece a la de {ficha.nombre}. Revisa que sea la persona de la foto antes de registrar su entrada.
         </p>
       )}
 

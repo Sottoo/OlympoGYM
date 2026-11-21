@@ -54,7 +54,7 @@ export default async function PaginaBitacora({ searchParams }: Props) {
           opciones={[
             { href: url({ area: null, pagina: 1 }), texto: "Todo", activa: !r.tabla },
             ...Object.entries(TABLAS_BITACORA)
-              .filter(([clave]) => !["suscripciones", "productos", "equipos", "abonos_mantenimiento", "reportes_falla", "huellas"].includes(clave))
+              .filter(([clave]) => !["suscripciones", "productos", "equipos", "abonos_mantenimiento", "reportes_falla", "huellas", "fondos_de_caja"].includes(clave))
               .map(([clave, texto]) => ({ href: url({ area: clave, pagina: 1 }), texto, activa: r.tabla === clave })),
           ]}
         />

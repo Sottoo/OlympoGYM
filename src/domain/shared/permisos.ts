@@ -70,7 +70,7 @@ export const PERMISOS_AJUSTABLES: { grupo: string; permisos: { permiso: Permiso;
     grupo: "Cobros",
     permisos: [
       { permiso: "cobros.otroMonto", texto: "Cobrar un monto distinto al precio del plan (descuentos)" },
-      { permiso: "cobros.corregir", texto: "Corregir o cancelar cobros ya registrados y anotar cobros de otro día", delicado: true },
+      { permiso: "cobros.corregir", texto: "Corregir o cancelar cobros ya registrados, anotar cobros de otro día y corregir el fondo de caja", delicado: true },
     ],
   },
   {

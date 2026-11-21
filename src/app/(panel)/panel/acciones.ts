@@ -46,3 +46,16 @@ export async function accionDeshacerEntrada(asistenciaId: string, visitaId?: str
   if (resultado.ok) revalidatePath("/", "layout");
   return resultado;
 }
+
+/** Anota (o corrige) con cuánto cambio empezó la caja hoy. */
+export async function accionGuardarFondoDeCaja(monto: number): Promise<Resultado<{ monto: number }>> {
+  const resultado = await intentar(async () => {
+    const fondo = await (await casosDeUso()).guardarFondoDeCaja.ejecutar(monto);
+    return { monto: fondo.monto };
+  });
+  if (resultado.ok) {
+    revalidatePath("/panel");
+    revalidatePath("/ventas");
+  }
+  return resultado;
+}

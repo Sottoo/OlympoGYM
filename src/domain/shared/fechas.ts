@@ -42,6 +42,14 @@ export function sumarMeses(fecha: FechaISO, meses: number): FechaISO {
   return aTexto(d);
 }
 
+/** Ese día del mes en el mes de `fecha`; si el mes no lo trae, su último día (31 en febrero = 28/29 feb). */
+export function conDiaDelMes(fecha: FechaISO, dia: number): FechaISO {
+  const d = aDate(fecha);
+  const ultimoDia = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate();
+  d.setUTCDate(Math.min(dia, ultimoDia));
+  return aTexto(d);
+}
+
 /** Días que hay de `desde` a `hasta` (negativo si `hasta` ya pasó). */
 export function diasEntre(desde: FechaISO, hasta: FechaISO): number {
   const ms = aDate(hasta).getTime() - aDate(desde).getTime();

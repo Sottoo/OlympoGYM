@@ -25,6 +25,7 @@ const COLUMNAS_BITACORA: Record<string, string[]> = {
   mantenimientos: ["id", "equipo_id", "fecha", "tipo", "descripcion", "proveedor", "mano_de_obra", "refacciones", "total"],
   abonos_mantenimiento: ["id", "mantenimiento_id", "monto", "metodo", "fecha", "nota"],
   reportes_falla: ["id", "equipo_id", "descripcion", "fuera_de_servicio", "reportado_por", "atendido_en", "cierre"],
+  fondos_de_caja: ["id", "fecha", "monto"],
 };
 
 const json = (fila: "new" | "old", columnas: string[]) => `json_object(${columnas.map((c) => `'${c}', ${fila}.${c}`).join(", ")})`;
@@ -436,5 +437,21 @@ const codigoConDueno = /* sql */ `
   end;
 `;
 
+/**
+ * v11 — Fondo de caja. Con cuánto cambio empieza la caja cada día, para que
+ * «Efectivo en caja» diga lo que de verdad debe haber en el cajón (fondo +
+ * efectivo cobrado − lo que salió). Uno por día; si se corrige, queda en la bitácora.
+ */
+const fondoDeCaja = /* sql */ `
+  create table fondos_de_caja (
+    id text primary key,
+    fecha text not null unique,
+    monto real not null check (monto >= 0),
+    creado_en text not null default ${AHORA}
+  );
+  ${disparador("fondos_de_caja", "alta")}
+  ${disparador("fondos_de_caja", "cambio")}
+`;
+
 /** Migraciones en orden. La posición + 1 es la versión que queda en `user_version`. */
-export const MIGRACIONES: string[] = [inicial, sinRecordatorios, ventaAGranel, mantenimiento, fotoDeProducto, huellas, borradoDefinitivo, equiposEliminados, planesEliminados, codigoConDueno];
+export const MIGRACIONES: string[] = [inicial, sinRecordatorios, ventaAGranel, mantenimiento, fotoDeProducto, huellas, borradoDefinitivo, equiposEliminados, planesEliminados, codigoConDueno, fondoDeCaja];
