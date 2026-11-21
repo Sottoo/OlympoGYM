@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { nombreDelMetodo, type Pago } from "@/domain/entities/Pago";
-import type { Suscripcion } from "@/domain/entities/Suscripcion";
+import { fechaDePago, type Suscripcion } from "@/domain/entities/Suscripcion";
 import { describirDuracion, esPlanDeVisita } from "@/domain/entities/Plan";
 import { nombreCompleto } from "@/domain/entities/Socio";
 import { NoEncontrado } from "@/domain/shared/ErrorDeDominio";
@@ -190,8 +190,8 @@ export default async function PaginaSocio({ params, searchParams }: Props) {
                 hoy,
                 hora: horaLocal(entorno.zonaHoraria),
                 situacion: membresia.estado,
-                diasRestantes: membresia.diasRestantes,
-                fechaFin: membresia.fechaFin,
+                diasParaPagar: membresia.diasParaPagar,
+                fechaDePago: membresia.fechaDePago,
                 plan: planActual,
                 visitasDelMes: sellos.dias.length,
                 racha: sellos.racha,
@@ -257,10 +257,11 @@ export default async function PaginaSocio({ params, searchParams }: Props) {
         <EtiquetaCifra
           compacta
           cifra={{
-            etiqueta: membresia.estado === "vencida" ? "Venció" : "Vence",
+            // El día que le toca pagar: pagó el 21 → «vence el 21» (su último día para entrar es el 20).
+            etiqueta: (membresia.diasParaPagar ?? 0) < 0 ? "Venció" : "Vence",
             icono: "reloj",
-            valor: membresia.fechaFin ? formatearFecha(membresia.fechaFin) : "—",
-            detalle: membresia.fechaFin && membresia.diasRestantes !== null ? describirDiasRestantes(membresia.diasRestantes) : "Sin membresía",
+            valor: membresia.fechaDePago ? formatearFecha(membresia.fechaDePago) : "—",
+            detalle: membresia.fechaDePago && membresia.diasParaPagar !== null ? describirDiasRestantes(membresia.diasParaPagar) : "Sin membresía",
             alerta: membresia.estado === "vencida",
           }}
         />
@@ -301,9 +302,9 @@ export default async function PaginaSocio({ params, searchParams }: Props) {
             {socio.activo && pagadaHasta ? (
               <p className="text-[0.92rem] text-tinta-suave">
                 {pagadaHasta.fechaInicio > hoy
-                  ? `Ya tiene pagada su siguiente membresía (${pagadaHasta.planNombre}, del ${formatearFecha(pagadaHasta.fechaInicio)} al ${formatearFecha(pagadaHasta.fechaFin)}).`
-                  : `Tiene su membresía pagada hasta el ${formatearFecha(pagadaHasta.fechaFin)}.`}{" "}
-                Se podrá renovar a partir del <b className="font-semibold text-tinta">{formatearFecha(pagadaHasta.fechaFin)}</b>, su último día.
+                  ? `Ya tiene pagada su siguiente membresía (${pagadaHasta.planNombre}, del ${formatearFecha(pagadaHasta.fechaInicio)} al ${formatearFecha(fechaDePago(pagadaHasta))}).`
+                  : `Su membresía vence el ${formatearFecha(fechaDePago(pagadaHasta))}.`}{" "}
+                Se puede renovar desde el <b className="font-semibold text-tinta">{formatearFecha(pagadaHasta.fechaFin)}</b>, un día antes, sin perder días.
               </p>
             ) : socio.activo ? (
               <>
@@ -398,7 +399,7 @@ function HistorialDeCobros({
     const monto = ps.reduce((t, p) => t + p.monto, 0);
     const cobro = ps[0];
     const estado = s && !s.esVisita ? (s.fechaInicio > hoy ? "Próxima" : s.fechaFin >= hoy ? "Vigente" : null) : null;
-    const periodo = !s ? "" : s.esVisita || s.fechaInicio === s.fechaFin ? formatearFecha(s.fechaInicio) : `${formatearFecha(s.fechaInicio)} – ${formatearFecha(s.fechaFin)}`;
+    const periodo = !s ? "" : s.esVisita || s.fechaInicio === s.fechaFin ? formatearFecha(s.fechaInicio) : `${formatearFecha(s.fechaInicio)} – ${formatearFecha(fechaDePago(s))}`;
     return (
       <li key={id} className="flex items-start justify-between gap-3 border-b border-dashed border-linea py-2.5 last:border-0">
         <span className="min-w-0">

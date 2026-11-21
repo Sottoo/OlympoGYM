@@ -577,9 +577,9 @@ function FichaMostrador({
               <dd className="font-bold">{ficha.planNombre ?? "Sin plan"}</dd>
             </div>
             <div>
-              <dt className="text-[0.75rem] font-semibold text-gris">{membresia.estado === "vencida" ? "Venció" : "Vence"}</dt>
+              <dt className="text-[0.75rem] font-semibold text-gris">{(membresia.diasParaPagar ?? 0) < 0 ? "Venció" : "Vence"}</dt>
               <dd className="font-bold">
-                {membresia.fechaFin ? `${formatearFecha(membresia.fechaFin)} · ${describirDiasRestantes(membresia.diasRestantes ?? 0).replace(/^Vence /, "").replace(/^Venció /, "")}` : "—"}
+                {membresia.fechaDePago ? `${formatearFecha(membresia.fechaDePago)} · ${describirDiasRestantes(membresia.diasParaPagar ?? 0).replace(/^Vence /, "").replace(/^Venció /, "")}` : "—"}
               </dd>
             </div>
             <div>
@@ -671,7 +671,8 @@ function describirVeredicto({ veredicto, membresia }: FichaDeEntrada, zonaHorari
   tejida: string;
   icono: NombreIcono;
 } {
-  const dias = describirDiasRestantes(membresia.diasRestantes ?? 0);
+  // Se dice con el día que le toca pagar (pagó el 21 → «vence el 21»), no con su último día.
+  const dias = describirDiasRestantes(membresia.diasParaPagar ?? 0);
   switch (veredicto.tipo) {
     case "puede_pasar":
       return membresia.estado === "por_vencer"
@@ -686,7 +687,7 @@ function describirVeredicto({ veredicto, membresia }: FichaDeEntrada, zonaHorari
       };
     case "sin_membresia":
       return {
-        etiqueta: membresia.fechaFin ? "Membresía vencida" : "Sin plan",
+        etiqueta: !membresia.fechaFin ? "Sin plan" : membresia.diasParaPagar === 0 ? "Hoy le toca pagar" : "Membresía vencida",
         detalle: membresia.fechaFin ? `${dias}. Para entrar hoy paga la visita o renueva su membresía.` : "Nunca ha tenido un plan. Para entrar hoy paga la visita o contrata un plan.",
         tejida: "bg-rojo!",
         icono: "alerta",

@@ -1,6 +1,6 @@
 import { type MetodoPago, revisarFechaDeCobro, validarNuevoPago } from "@/domain/entities/Pago";
 import { calcularFechaFin, esPlanDeVisita } from "@/domain/entities/Plan";
-import { diaDePago, type Suscripcion } from "@/domain/entities/Suscripcion";
+import { diaDePago, fechaDePago, type Suscripcion } from "@/domain/entities/Suscripcion";
 import type { PlanRepository } from "@/domain/repositories/PlanRepository";
 import type { SocioRepository } from "@/domain/repositories/SocioRepository";
 import type { SuscripcionRepository } from "@/domain/repositories/SuscripcionRepository";
@@ -67,8 +67,8 @@ export class AsignarPlan {
     if (ultima && ultima.fechaFin > dia) {
       throw new ErrorDeDominio(
         ultima.fechaInicio > dia
-          ? `${socio.nombre} ya tiene pagada su siguiente membresía (${ultima.planNombre}, del ${formatearFecha(ultima.fechaInicio)} al ${formatearFecha(ultima.fechaFin)}). No se le puede cobrar otra.`
-          : `${socio.nombre} ya tiene su membresía vigente hasta el ${formatearFecha(ultima.fechaFin)}. Se podrá renovar a partir de ese día.`,
+          ? `${socio.nombre} ya tiene pagada su siguiente membresía (${ultima.planNombre}, del ${formatearFecha(ultima.fechaInicio)} al ${formatearFecha(fechaDePago(ultima))}). No se le puede cobrar otra.`
+          : `${socio.nombre} ya tiene su membresía vigente; vence el ${formatearFecha(fechaDePago(ultima))}. Se puede renovar desde el ${formatearFecha(ultima.fechaFin)}.`,
       );
     }
     // Ese día ya lo tiene pagado (es el último de su membresía, o pagó la visita): la nueva empieza al siguiente.

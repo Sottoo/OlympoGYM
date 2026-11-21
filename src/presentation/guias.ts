@@ -35,11 +35,11 @@ export const GUIAS = {
       "Cuando llega un socio, pídele que ponga el dedo en el lector o escribe su nombre, celular o número.",
       "Si su membresía está vigente, la pantalla dice «Puede pasar» y la entrada se anota sola.",
       "Si está vencida o no tiene plan, cóbrale ahí mismo (renovación o visita) antes de dejarlo pasar.",
-      "Revisa «Por vencer»: son los socios a los que les queda un día; recuérdales renovar.",
+      "Revisa «Por vencer»: son los socios a los que les toca pagar hoy o en los próximos dos días; recuérdales renovar.",
       "Al cerrar, cuenta el efectivo y compáralo con «Efectivo en caja». «Ver detalle» abre el corte completo.",
     ],
     registro: "Cada entrada queda con fecha, hora y quién la registró. Cada cobro entra al corte del día.",
-    reglas: ["Nadie pasa sin membresía vigente o visita pagada.", "El aviso de vencimiento sale un día antes de su último día: quien pagó el 7 lo ve desde el día 5 del mes siguiente."],
+    reglas: ["Nadie pasa sin membresía vigente o visita pagada.", "La mensualidad se paga el mismo día de cada mes: quien pagó el 7 vence el 7 del mes siguiente y ese día paga para entrar. El aviso sale desde el día 5."],
   },
   entradas: {
     clave: "P-02",
@@ -60,7 +60,7 @@ export const GUIAS = {
     quien: "Recepción y administración.",
     pasos: [
       "Busca por nombre, celular o número de socio.",
-      "Usa los filtros: al corriente, por vencer (le queda un día), vencidos, sin plan, en espera (bajas).",
+      "Usa los filtros: al corriente, por vencer (le toca pagar en uno o dos días), vencidos, sin plan, en espera (bajas).",
       "Toca un socio para ver su ficha: pagos, membresías, entradas y huella.",
       "Para alguien nuevo, usa «Inscribir socio».",
     ],

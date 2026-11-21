@@ -144,11 +144,11 @@ export default async function PaginaSocios({ searchParams }: { searchParams: Pro
                       <td>{planNombre ?? <span className="text-gris">—</span>}</td>
                       <td><EstadoMembresia estado={membresia.estado} activo={socio.activo} /></td>
                       <td className="whitespace-nowrap text-sm">
-                        {membresia.fechaFin && membresia.diasRestantes !== null ? (
+                        {membresia.fechaDePago && membresia.diasParaPagar !== null ? (
                           <>
-                            <span className="tabular-nums">{formatearFecha(membresia.fechaFin)}</span>
+                            <span className="tabular-nums">{formatearFecha(membresia.fechaDePago)}</span>
                             <span className={`block ${membresia.estado === "vencida" ? "text-rojo" : "text-gris"}`}>
-                              {describirDiasRestantes(membresia.diasRestantes)}
+                              {describirDiasRestantes(membresia.diasParaPagar)}
                             </span>
                           </>
                         ) : (

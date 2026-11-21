@@ -28,9 +28,10 @@ export interface ContextoMensaje {
   hoy: string;
   hora: number;
   situacion: SituacionDelSocio;
-  /** Días que le quedan (0 = hoy, negativo = días vencida). */
-  diasRestantes: number | null;
-  fechaFin: string | null;
+  /** Días para el día que le toca pagar (0 = hoy, negativo = días de atraso). */
+  diasParaPagar: number | null;
+  /** El día que le toca volver a pagar: es la fecha que se le dice como «vence» (pagó el 21 → vence el 21). */
+  fechaDePago: string | null;
   plan: string | null;
   /** Lo que el gimnasio sabe del socio (opcional): le da el toque personal. */
   visitasDelMes?: number;
@@ -59,8 +60,8 @@ export function redactarMensaje(c: ContextoMensaje, variante = 0): string {
   const n = `*${c.nombre}*`;
   const membresia = c.plan ? `tu plan *${c.plan}*` : "tu membresía";
   const Membresia = capital(membresia);
-  const fecha = c.fechaFin ? fechaConDia(c.fechaFin) : "";
-  const dias = Math.abs(c.diasRestantes ?? 0);
+  const fecha = c.fechaDePago ? fechaConDia(c.fechaDePago) : "";
+  const dias = Math.abs(c.diasParaPagar ?? 0);
   const haceDias = dias === 1 ? "ayer" : `hace ${dias} días`;
 
   const momento = c.hora < 12 ? "Buenos días" : c.hora < 19 ? "Buenas tardes" : "Buenas noches";
@@ -68,10 +69,10 @@ export function redactarMensaje(c: ContextoMensaje, variante = 0): string {
 
   // Lo que pasa, en una línea.
   const cuerpo: Record<Caso, string[]> = {
-    vence_hoy: [`${Membresia} vence *hoy*.`, `Hoy es el último día de ${membresia}.`],
-    vence_manana: [`${Membresia} vence *mañana, ${fecha}*.`, `Mañana, *${fecha}*, termina ${membresia}.`],
+    vence_hoy: [`${Membresia} vence *hoy*.`, `Hoy te toca renovar ${membresia}.`],
+    vence_manana: [`${Membresia} vence *mañana, ${fecha}*.`, `Mañana, *${fecha}*, te toca renovar ${membresia}.`],
     vence_pronto: [`${Membresia} vence el *${fecha}*.`, `A ${membresia} le quedan *${dias} días* (vence el ${fecha}).`],
-    vigente: [`${Membresia} está activa hasta el *${fecha}*.`],
+    vigente: [`${Membresia} vence el *${fecha}*.`],
     vencida_reciente: [`${Membresia} venció el *${fecha}*.`, `${Membresia} venció *${haceDias}*.`],
     vencida: [`${Membresia} venció el *${fecha}*.`],
     recuperar: ["Hace tiempo que no te vemos por el gimnasio.", "Te extrañamos en el gimnasio."],
@@ -80,7 +81,7 @@ export function redactarMensaje(c: ContextoMensaje, variante = 0): string {
 
   // Qué hacer, en una línea.
   const accion: Record<Caso, string[]> = {
-    vence_hoy: ["Renueva hoy en recepción y mañana entrenas sin interrupciones.", "Renueva en recepción para seguir entrenando mañana."],
+    vence_hoy: ["Renueva hoy en recepción para seguir entrenando.", "Pasa hoy a recepción a renovarla y sigue entrenando."],
     vence_manana: ["Renueva en recepción; los días que te quedan se respetan.", "Si renuevas antes, *no pierdes ningún día*."],
     vence_pronto: ["Renueva cuando gustes en recepción; *no pierdes ningún día*.", "Si renuevas antes, los días que te quedan se respetan."],
     vigente: ["Si quieres renovar por adelantado, te ayudamos en recepción."],
@@ -117,8 +118,8 @@ export interface TarjetaMensaje {
 
 export function tarjetaDelMensaje(c: ContextoMensaje): TarjetaMensaje {
   const caso = casoDe(c);
-  const fecha = c.fechaFin ? capital(fechaConDia(c.fechaFin)) : "";
-  const dias = Math.abs(c.diasRestantes ?? 0);
+  const fecha = c.fechaDePago ? capital(fechaConDia(c.fechaDePago)) : "";
+  const dias = Math.abs(c.diasParaPagar ?? 0);
   const renovar = "Renueva en recepción · efectivo o transferencia";
   switch (caso) {
     case "vence_hoy":
@@ -128,10 +129,10 @@ export function tarjetaDelMensaje(c: ContextoMensaje): TarjetaMensaje {
     case "vence_pronto":
       return { rotulo: "Aviso de membresía", titulo: `Vence en ${dias} días`, detalle: fecha, nota: renovar, urgente: false };
     case "vigente":
-      return { rotulo: "Tu membresía", titulo: "Membresía activa", detalle: `Hasta el ${fechaConDia(c.fechaFin!)}`, nota: "Renovar antes no te quita días", urgente: false };
+      return { rotulo: "Tu membresía", titulo: "Membresía activa", detalle: `Vence el ${fechaConDia(c.fechaDePago!)}`, nota: "Renovar antes no te quita días", urgente: false };
     case "vencida_reciente":
     case "vencida":
-      return { rotulo: "Aviso de membresía", titulo: "Membresía vencida", detalle: `Venció el ${fechaConDia(c.fechaFin!)}`, nota: renovar, urgente: true };
+      return { rotulo: "Aviso de membresía", titulo: "Membresía vencida", detalle: `Venció el ${fechaConDia(c.fechaDePago!)}`, nota: renovar, urgente: true };
     case "recuperar":
       return { rotulo: "Te extrañamos", titulo: "Te extrañamos", detalle: "Tu lugar sigue aquí", nota: "En recepción te ayudamos a elegir plan", urgente: false };
     case "sin_plan":
@@ -149,8 +150,8 @@ export function sinFormato(mensaje: string): string {
 type Caso = "vence_hoy" | "vence_manana" | "vence_pronto" | "vigente" | "vencida_reciente" | "vencida" | "recuperar" | "sin_plan";
 
 function casoDe(c: ContextoMensaje): Caso {
-  const d = c.diasRestantes;
-  if (c.situacion === "sin_plan" || d === null || !c.fechaFin) return "sin_plan";
+  const d = c.diasParaPagar;
+  if (c.situacion === "sin_plan" || d === null || !c.fechaDePago) return "sin_plan";
   if (d < -30) return "recuperar";
   if (d < -7) return "vencida";
   if (d < 0) return "vencida_reciente";

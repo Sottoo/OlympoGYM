@@ -65,17 +65,32 @@ export const DIAS_PARA_POR_VENCER = 1;
 
 export interface SituacionMembresia {
   estado: EstadoMembresia;
-  /** Días que le quedan (0 = vence hoy, negativo = días vencida). */
+  /** Días que le quedan para entrar (0 = hoy es su último día, negativo = días vencida). Decide si pasa. */
   diasRestantes: number | null;
+  /** Último día que puede entrar (inclusive). */
   fechaFin: FechaISO | null;
+  /**
+   * El día que le toca volver a pagar: el que se le muestra a recepción y al
+   * socio como «Vence». Quien pagó el 21 ve «vence el 21» del mes siguiente,
+   * aunque su último día para entrar sea el 20. En una visita es el mismo día.
+   */
+  fechaDePago: FechaISO | null;
+  /** Días para `fechaDePago` (0 = hoy le toca pagar, negativo = días de atraso). Es lo que se muestra. */
+  diasParaPagar: number | null;
+}
+
+/** El día que le toca volver a pagar: el siguiente a su último día (la visita, ese mismo día). */
+export function fechaDePago(s: Pick<Suscripcion, "fechaFin" | "esVisita">): FechaISO {
+  return s.esVisita ? s.fechaFin : sumarDias(s.fechaFin, 1);
 }
 
 export function situacionDeMembresia(suscripcion: Suscripcion | null, hoy: FechaISO): SituacionMembresia {
-  if (!suscripcion) return { estado: "sin_plan", diasRestantes: null, fechaFin: null };
+  if (!suscripcion) return { estado: "sin_plan", diasRestantes: null, fechaFin: null, fechaDePago: null, diasParaPagar: null };
 
   const diasRestantes = diasEntre(hoy, suscripcion.fechaFin);
   const estado: EstadoMembresia =
     diasRestantes < 0 ? "vencida" : diasRestantes <= DIAS_PARA_POR_VENCER ? "por_vencer" : "vigente";
+  const pago = fechaDePago(suscripcion);
 
-  return { estado, diasRestantes, fechaFin: suscripcion.fechaFin };
+  return { estado, diasRestantes, fechaFin: suscripcion.fechaFin, fechaDePago: pago, diasParaPagar: diasEntre(hoy, pago) };
 }

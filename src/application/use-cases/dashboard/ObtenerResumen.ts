@@ -16,6 +16,10 @@ export interface FilaVencimiento {
   planNombre: string;
   fechaFin: string;
   diasRestantes: number;
+  /** El día que le toca volver a pagar (lo que se muestra como «Vence»). */
+  fechaDePago: string;
+  /** Días para ese pago (0 = hoy le toca pagar). */
+  diasParaPagar: number;
 }
 
 export interface Resumen {
@@ -63,7 +67,7 @@ export class ObtenerResumen {
     for (const suscripcion of ultimas) {
       const socio = sociosPorId.get(suscripcion.socioId);
       if (!socio) continue;
-      const { estado, diasRestantes } = situacionDeMembresia(suscripcion, hoy);
+      const { estado, diasRestantes, fechaDePago, diasParaPagar } = situacionDeMembresia(suscripcion, hoy);
       const fila: FilaVencimiento = {
         socioId: socio.id,
         nombre: nombreCompleto(socio),
@@ -71,13 +75,17 @@ export class ObtenerResumen {
         planNombre: suscripcion.planNombre,
         fechaFin: suscripcion.fechaFin,
         diasRestantes: diasRestantes ?? 0,
+        fechaDePago: fechaDePago ?? suscripcion.fechaFin,
+        diasParaPagar: diasParaPagar ?? 0,
       };
       if (estado === "vigente") vigentes++;
       if (estado === "por_vencer") {
         vigentes++;
         porVencer.push(fila);
       }
-      if (estado === "vencida" && fila.diasRestantes >= -DIAS_VENCIDOS_VISIBLES) vencidosRecientes.push(fila);
+      // Hoy le toca pagar (ayer fue su último día): va con los que tienen que renovar, no con los perdidos.
+      else if (estado === "vencida" && fila.diasParaPagar === 0) porVencer.push(fila);
+      else if (estado === "vencida" && fila.diasRestantes >= -DIAS_VENCIDOS_VISIBLES) vencidosRecientes.push(fila);
     }
 
     porVencer.sort((a, b) => a.diasRestantes - b.diasRestantes);

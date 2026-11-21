@@ -198,7 +198,7 @@ export default async function PaginaHoy() {
           accion={<EnlacePanel href="/socios?filtro=por_vencer">Ver todos</EnlacePanel>}
         >
           {r.porVencer.length === 0 ? (
-            <p className="text-[0.88rem] text-gris">Nadie vence hoy ni mañana.</p>
+            <p className="text-[0.88rem] text-gris">Nadie tiene que renovar en estos días.</p>
           ) : (
             <ul>
               {r.porVencer.slice(0, 5).map((f) => (
@@ -235,17 +235,18 @@ export default async function PaginaHoy() {
 }
 
 function FilaVence({ fila, hoy }: { fila: FilaVencimiento; hoy: string }) {
-  const dias = Math.max(0, fila.diasRestantes);
-  const color = fila.diasRestantes <= 1 ? "text-hilo" : "text-ambar";
+  // Se muestra el día que le toca pagar (pagó el 21 → «vence el 21»).
+  const dias = Math.max(0, fila.diasParaPagar);
+  const color = fila.diasParaPagar <= 1 ? "text-hilo" : "text-ambar";
   return (
     <li className="flex items-center gap-3 border-b border-dashed border-linea py-2 last:border-0">
-      <span className={`grid size-[38px] shrink-0 place-items-center rounded-full border-[1.5px] border-dashed border-current font-titulos text-[1.1rem] ${color}`} title={describirDiasRestantes(fila.diasRestantes)}>
+      <span className={`grid size-[38px] shrink-0 place-items-center rounded-full border-[1.5px] border-dashed border-current font-titulos text-[1.1rem] ${color}`} title={describirDiasRestantes(fila.diasParaPagar)}>
         {dias}
       </span>
       <span className="min-w-0 flex-1">
         <Link href={`/socios/${fila.socioId}`} className="enlace block truncate text-[0.9rem] font-medium">{fila.nombre}</Link>
-        <span className={`text-[0.75rem] ${fila.diasRestantes <= 1 ? "font-semibold text-rojo" : "text-gris"}`}>
-          {describirDiasRestantes(fila.diasRestantes)} · {formatearFecha(fila.fechaFin)}
+        <span className={`text-[0.75rem] ${fila.diasParaPagar <= 1 ? "font-semibold text-rojo" : "text-gris"}`}>
+          {describirDiasRestantes(fila.diasParaPagar)} · {formatearFecha(fila.fechaDePago)}
         </span>
       </span>
       {fila.telefono && (
@@ -260,8 +261,8 @@ function FilaVence({ fila, hoy }: { fila: FilaVencimiento; hoy: string }) {
             hoy,
             hora: horaLocal(entorno.zonaHoraria),
             situacion: "por_vencer",
-            diasRestantes: fila.diasRestantes,
-            fechaFin: fila.fechaFin,
+            diasParaPagar: fila.diasParaPagar,
+            fechaDePago: fila.fechaDePago,
             plan: fila.planNombre,
           }}
         />
