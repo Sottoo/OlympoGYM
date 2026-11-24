@@ -1,7 +1,7 @@
 import { exigirPermiso } from "@/infrastructure/auth/autenticacion";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { describirDuracion, esPlanDeVisita, type Plan } from "@/domain/entities/Plan";
+import { describirDuracion, esPaseDeCortesia, esPlanDeVisita, type Plan } from "@/domain/entities/Plan";
 import { casosDeUso } from "@/infrastructure/contenedor";
 import { Encabezado } from "@/presentation/components/Encabezado";
 import { Icono } from "@/presentation/components/Icono";
@@ -26,7 +26,8 @@ export default async function PaginaPlanes({ searchParams }: Props) {
   const [planes, vendidos] = await Promise.all([casos.listarPlanes.ejecutar(), casos.listarPlanesVendidos.ejecutar()]);
   const activos = planes.filter((p) => p.activo);
   const inactivos = planes.filter((p) => !p.activo);
-  const visitasActivas = activos.filter(esPlanDeVisita);
+  // La visita que cobra el mostrador (con precio); los pases de cortesía (1 día a $0) son aparte.
+  const visitasActivas = activos.filter((p) => esPlanDeVisita(p) && !esPaseDeCortesia(p));
   const enEdicion = editar ? planes.find((p) => p.id === editar) : undefined;
 
   const aviso = editado
@@ -44,7 +45,7 @@ export default async function PaginaPlanes({ searchParams }: Props) {
       <td>
         <span className={`flex flex-wrap items-center gap-2 font-semibold ${p.activo ? "" : "text-gris"}`}>
           {p.nombre}
-          {esPlanDeVisita(p) && <Insignia tono="oscuro">Visita</Insignia>}
+          {esPaseDeCortesia(p) ? <Insignia tono="neutro">Cortesía · 1 vez por persona</Insignia> : esPlanDeVisita(p) && <Insignia tono="oscuro">Visita</Insignia>}
           {!p.activo && <Insignia tono="neutro">Desactivado</Insignia>}
         </span>
         {p.descripcion && <span className="text-sm text-gris">{p.descripcion}</span>}
@@ -62,7 +63,7 @@ export default async function PaginaPlanes({ searchParams }: Props) {
             nombre={p.nombre}
             activo={p.activo}
             vendido={vendidos.has(p.id)}
-            unicaVisita={p.activo && esPlanDeVisita(p) && visitasActivas.length === 1}
+            unicaVisita={p.activo && esPlanDeVisita(p) && !esPaseDeCortesia(p) && visitasActivas.length === 1}
           />
         </div>
       </td>

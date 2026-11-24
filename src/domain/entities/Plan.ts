@@ -24,6 +24,15 @@ export function esPlanDeVisita(plan: Pick<Plan, "duracion" | "unidad">): boolean
   return plan.unidad === "dias" && plan.duracion === 1;
 }
 
+/**
+ * Pase de cortesía: un plan de 1 día a $0 (por ejemplo, para quien viene a
+ * conocer el gimnasio). No es «la visita» que cobra el mostrador: se da al
+ * inscribir a la persona y solo una vez por persona.
+ */
+export function esPaseDeCortesia(plan: Pick<Plan, "duracion" | "unidad" | "precio">): boolean {
+  return esPlanDeVisita(plan) && plan.precio === 0;
+}
+
 const UNIDADES: UnidadDuracion[] = ["dias", "semanas", "meses"];
 
 /** Duración máxima por unidad: un año en días o semanas, tres años en meses. */
@@ -38,11 +47,9 @@ export function validarNuevoPlan(datos: DatosNuevoPlan): DatosNuevoPlan {
   if (descripcion && descripcion.length > LIMITES.descripcionPlan) {
     throw new ErrorDeDominio(`La descripción puede tener hasta ${LIMITES.descripcionPlan} caracteres.`, "descripcion");
   }
-  // Una membresía puede ser gratis ($0, por ejemplo una cortesía): en pantalla dice «Gratis».
-  // La visita no: es lo que se cobra a quien llega sin membresía, y una visita gratis la tomaba
-  // el mostrador para todos (pasó con una «visita para conocer» de $0.01).
-  const visita = esPlanDeVisita(datos);
-  const errorPrecio = revisarDinero(datos.precio, visita ? { minExclusivo: true, que: "El precio de la visita" } : { que: "El precio" });
+  // Cualquier plan puede ser de $0 (cortesía): en pantalla dice «Gratis». Uno de 1 día a $0 es un
+  // pase de cortesía y el mostrador nunca lo cobra por su cuenta (ver buscarPlanDeVisita).
+  const errorPrecio = revisarDinero(datos.precio, { que: "El precio" });
   if (errorPrecio) throw new ErrorDeDominio(errorPrecio, "precio");
   if (!UNIDADES.includes(datos.unidad)) throw new ErrorDeDominio("La unidad de duración no es válida.", "unidad");
   const errorDuracion = revisarEntero(datos.duracion, { min: 1, max: DURACION_MAXIMA[datos.unidad], que: "La duración" });

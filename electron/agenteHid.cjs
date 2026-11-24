@@ -92,4 +92,67 @@ function reiniciarAgente({ forzar = false } = {}) {
   return enCurso;
 }
 
-module.exports = { reiniciarAgente };
+/**
+ * Al despertar de la suspensión (o al desbloquear tras un rato) se reinicia el
+ * agente, igual que al desconectar y volver a conectar el lector. En otra
+ * computadora, después de suspenderse, el agente quedaba entregando una sola
+ * huella por cada «Reiniciar» y solo se arreglaba desconectando el lector
+ * (24/11/2026). Si al despertar la sesión está bloqueada, se espera a que se
+ * desbloquee: el agente nuevo arranca ya con la sesión en uso.
+ *
+ * `monitor` es powerMonitor de Electron; `avisar("inicio")` va antes de
+ * cerrarlo (la pantalla suelta su conexión) y `avisar("listo")` al terminar
+ * (vuelve a conectar); `anotar` escribe en la bitácora del lector.
+ */
+const BLOQUEO_LARGO_MS = 2 * 60_000;
+const ESPERA_TRAS_DESPERTAR_MS = 3_000;
+const ESPERA_TRAS_DESBLOQUEAR_MS = 1_000;
+const ESPERA_PARA_SOLTAR_MS = 1_500;
+
+function vigilarSuspension({ monitor, avisar, anotar, esperas = {} }) {
+  const e = {
+    bloqueoLargo: BLOQUEO_LARGO_MS,
+    trasDespertar: ESPERA_TRAS_DESPERTAR_MS,
+    trasDesbloquear: ESPERA_TRAS_DESBLOQUEAR_MS,
+    paraSoltar: ESPERA_PARA_SOLTAR_MS,
+    ...esperas,
+  };
+  let bloqueadaDesde = 0;
+  let pendiente = false;
+  let enMarcha = false;
+  const reiniciar = async (motivo) => {
+    pendiente = false;
+    if (enMarcha) return;
+    enMarcha = true;
+    try {
+      avisar("inicio");
+      await esperar(e.paraSoltar);
+      const r = await reiniciarAgente({ forzar: true });
+      anotar(`agente de HID (${motivo}): ${r.ok ? r.accion : `falló: ${r.error}`}`);
+    } catch (error) {
+      anotar(`agente de HID (${motivo}): falló (${error instanceof Error ? error.message : error})`);
+    } finally {
+      enMarcha = false;
+      avisar("listo");
+    }
+  };
+  monitor.on("lock-screen", () => {
+    bloqueadaDesde = Date.now();
+  });
+  monitor.on("resume", () => {
+    if (bloqueadaDesde) {
+      pendiente = true;
+      return;
+    }
+    // Windows tarda un momento en volver a presentar los dispositivos USB.
+    setTimeout(() => void reiniciar("al despertar"), e.trasDespertar);
+  });
+  monitor.on("unlock-screen", () => {
+    const largo = bloqueadaDesde > 0 && Date.now() - bloqueadaDesde > e.bloqueoLargo;
+    const motivo = pendiente ? "al despertar y desbloquear" : "al desbloquear tras un rato";
+    bloqueadaDesde = 0;
+    if (pendiente || largo) setTimeout(() => void reiniciar(motivo), e.trasDesbloquear);
+  });
+}
+
+module.exports = { reiniciarAgente, vigilarSuspension };

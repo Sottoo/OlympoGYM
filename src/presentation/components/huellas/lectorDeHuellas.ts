@@ -456,6 +456,41 @@ function reconectar(mostrarConectando = true): Promise<void> {
   return reconexionEnCurso;
 }
 
+let reinicioCompletoEnCurso: Promise<void> | null = null;
+
+/**
+ * Lo que hace «¿No responde? Reiniciar» (y «Reintentar»): suelta la conexión,
+ * REINICIA el agente de HID (solo en el programa de escritorio) y vuelve a
+ * conectar. Solo reconectar no bastaba: si el agente quedó dañado (ventanas que
+ * se cerraron de golpe) entregaba una sola huella por cada «Reiniciar»
+ * (comprobado el 24/11/2026). Uno recién abierto lee siempre. Tarda unos segundos.
+ */
+function reiniciarCompleto(): Promise<void> {
+  reinicioCompletoEnCurso ??= (async () => {
+    try {
+      cambiar("conectando");
+      const puente = escritorio()?.reiniciarAgenteLector;
+      if (puente) {
+        if (conexionEnCurso) await conexionEnCurso;
+        if (reconexionEnCurso) await reconexionEnCurso;
+        // Se suelta antes de cerrar el agente: que no quede una conexión colgando.
+        const viejo = lector;
+        lector = null;
+        capturando = false;
+        if (viejo) await soltar(viejo);
+        agenteArrancandoHasta = Date.now() + 45_000;
+        const r = await puente({ forzar: true }).catch(() => null);
+        agenteArrancandoHasta = r?.ok ? Date.now() + 15_000 : 0;
+        ultimoReinicioDeAgente = Date.now();
+      }
+      await reconectar(true);
+    } finally {
+      reinicioCompletoEnCurso = null;
+    }
+  })();
+  return reinicioCompletoEnCurso;
+}
+
 /**
  * Renueva la conexión en silencio (la pantalla sigue diciendo "listo"). Tarda
  * menos de un cuarto de segundo; un dedo que llegue justo en ese instante se
@@ -501,6 +536,45 @@ function iniciarRevision() {
   });
 }
 
+let escuchandoAlPrograma = false;
+let soltandoPorElPrograma: Promise<void> | null = null;
+
+/**
+ * El programa de escritorio reinicia el agente de HID al despertar de la
+ * suspensión (ver vigilarSuspension en main.cjs). Antes de cerrarlo, aquí se
+ * suelta la conexión y la pantalla dice "Conectando…"; cuando el agente nuevo
+ * ya abrió, se vuelve a conectar.
+ */
+function escucharAlPrograma() {
+  const puente = escritorio()?.alReiniciarseAgenteLector;
+  if (escuchandoAlPrograma || !puente) return;
+  escuchandoAlPrograma = true;
+  puente((fase) => {
+    if (fase === "inicio") {
+      agenteArrancandoHasta = Date.now() + 45_000;
+      ultimoReinicioDeAgente = Date.now();
+      cambiar("conectando");
+      soltandoPorElPrograma = (async () => {
+        if (conexionEnCurso) await conexionEnCurso.catch(() => {});
+        if (reconexionEnCurso) await reconexionEnCurso.catch(() => {});
+        const viejo = lector;
+        lector = null;
+        capturando = false;
+        if (viejo) await soltar(viejo);
+        olvidarConexionHid();
+      })().finally(() => (soltandoPorElPrograma = null));
+      return;
+    }
+    agenteArrancandoHasta = Date.now() + 15_000;
+    ultimoReinicioDeAgente = Date.now();
+    void (async () => {
+      if (soltandoPorElPrograma) await soltandoPorElPrograma;
+      // Sin pantalla del lector abierta no se conecta: la próxima que se abra conecta sola.
+      if (receptores.length > 0) await reconectar(true);
+    })();
+  });
+}
+
 function suscribir(avisar: () => void) {
   oyentes.add(avisar);
   return () => oyentes.delete(avisar);
@@ -528,6 +602,7 @@ export function useLectorDeHuellas(
 
   useEffect(() => {
     if (!activo) return;
+    escucharAlPrograma();
     const receptor: Receptor = { alLeer: alLeerActual, alAvisar: alAvisarActual };
     receptores.push(receptor);
     // Solo se conecta si aún no hay lector (o si se cayó); si ya está listo, no se toca.
@@ -539,7 +614,7 @@ export function useLectorDeHuellas(
     };
   }, [activo]);
 
-  return { estado: activo ? estadoActual : "conectando", reconectar: () => void reconectar() };
+  return { estado: activo ? estadoActual : "conectando", reconectar: () => void reiniciarCompleto() };
 }
 
 /** Texto corto para mostrar junto al lector. */

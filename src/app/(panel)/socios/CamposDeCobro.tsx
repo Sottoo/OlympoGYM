@@ -64,7 +64,7 @@ export function CamposDeCobro({ planes, planPreferido, puedeCambiarMonto, puedeC
                 <BotonDeRopa marcado={marcado} />
                 <span className="min-w-0 flex-1">
                   <span className="block font-bold leading-tight">{p.nombre}</span>
-                  <span className="text-sm text-gris">{p.esVisita ? "Solo hoy · entra en este momento" : p.duracion}</span>
+                  <span className="text-sm text-gris">{p.esVisita ? (p.precio === 0 ? "Cortesía · solo hoy, una vez por persona" : "Solo hoy · entra en este momento") : p.duracion}</span>
                 </span>
                 <span className="cifra text-xl">{precioOGratis(p.precio)}</span>
               </label>
@@ -72,7 +72,9 @@ export function CamposDeCobro({ planes, planPreferido, puedeCambiarMonto, puedeC
           })}
         </div>
         <Ayuda para="planId">
-          {plan?.esVisita
+          {plan?.esVisita && plan.precio === 0
+            ? "Pase de cortesía: su entrada de hoy queda anotada sin costo. Es una sola vez por persona."
+            : plan?.esVisita
             ? "Se cobra la visita y su entrada de hoy queda anotada."
             : otroDia && ayudaMembresia === "La membresía empieza hoy."
               ? "La membresía empieza el día en que se cobró."

@@ -9,7 +9,7 @@
  *   npm run escritorio       usa la versión compilada (.next/standalone)
  *   npm run escritorio:dev   usa `npm run dev` (http://localhost:3000)
  */
-const { app, BrowserWindow, Menu, Notification, dialog, ipcMain, shell, utilityProcess } = require("electron");
+const { app, BrowserWindow, Menu, Notification, dialog, ipcMain, powerMonitor, shell, utilityProcess } = require("electron");
 const { execFile } = require("node:child_process");
 const fs = require("node:fs");
 const net = require("node:net");
@@ -26,7 +26,7 @@ const {
   instalarAlSalir,
 } = require("./actualizador.cjs");
 const { raizDelCodigo, confirmarVersion, revertirVersion, limpiarVersionesViejas } = require("./versiones.cjs");
-const { reiniciarAgente } = require("./agenteHid.cjs");
+const { reiniciarAgente, vigilarSuspension } = require("./agenteHid.cjs");
 
 const NOMBRE = "Olimpo GYM";
 const MODO_DEV = process.argv.includes("--dev");
@@ -67,14 +67,45 @@ async function iniciar() {
   // (los archivos se están reemplazando): se avisa y no se abre.
   if (await actualizacionInstalandose()) return;
   registrarPuente();
+  // Al despertar de la suspensión (o desbloquear tras un rato), agente de HID nuevo (ver agenteHid.cjs).
+  vigilarSuspension({
+    monitor: powerMonitor,
+    avisar: (fase) => enviarAVentana("olimpo:agente-lector", fase),
+    anotar: anotarEnRegistroDelLector,
+  });
   ventana = crearVentana();
   await abrirPrograma();
+}
+
+function enviarAVentana(canal, ...datos) {
+  try {
+    if (ventana && !ventana.isDestroyed()) ventana.webContents.send(canal, ...datos);
+  } catch {
+    // La ventana se está cerrando.
+  }
+}
+
+/**
+ * Al abrir el programa se reinicia una vez el agente del lector de huellas
+ * (ver agenteHid.cjs): si la vez anterior el programa se cerró de golpe (una
+ * actualización, un cierre forzado, un apagón), el agente pudo quedarse con
+ * ventanas muertas y entregar solo la primera huella o ninguna (comprobado el
+ * 24/11/2026). Uno recién abierto funciona siempre. Va en paralelo con el
+ * arranque del servidor y nunca impide que el programa abra.
+ */
+async function agenteLimpioAlAbrir() {
+  try {
+    const r = await reiniciarAgente({ forzar: true });
+    anotarEnRegistroDelLector(`agente de HID al abrir el programa: ${r.ok ? r.accion : `no se pudo (${r.error})`}`);
+  } catch (error) {
+    anotarEnRegistroDelLector(`agente de HID al abrir el programa: falló (${error instanceof Error ? error.message : error})`);
+  }
 }
 
 /** Arranca el servidor y carga la ventana. Si algo falla, ofrece reintentar en lugar de cerrarse. */
 async function abrirPrograma() {
   try {
-    const url = MODO_DEV ? URL_DEV : await iniciarServidor();
+    const [url] = await Promise.all([MODO_DEV ? URL_DEV : iniciarServidor(), agenteLimpioAlAbrir()]);
     await ventana?.loadURL(url);
     // Busca versiones nuevas por detrás; si descarga una, la interfaz muestra el aviso.
     iniciarActualizaciones({
@@ -314,7 +345,6 @@ function esDeLaApp(url) {
   return (hostname === "127.0.0.1" || hostname === "localhost") && port === String(puertoApp);
 }
 
-/** La petición viene de la ventana del programa (no de otra página). */
 /** Misma bitácora del lector que usa el servidor (datos/huellas.log): ahí se ve todo lo del lector junto. */
 function anotarEnRegistroDelLector(texto) {
   try {
@@ -326,6 +356,7 @@ function anotarEnRegistroDelLector(texto) {
   }
 }
 
+/** La petición viene de la ventana del programa (no de otra página). */
 function delPrograma(evento) {
   try {
     return esDeLaApp(evento.senderFrame?.url ?? "") && !evento.senderFrame.url.startsWith("data:");

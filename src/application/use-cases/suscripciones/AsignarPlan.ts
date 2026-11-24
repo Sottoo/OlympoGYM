@@ -1,6 +1,6 @@
 import { type Devolucion, type MetodoPago, revisarFechaDeCobro, validarDevolucion, validarNuevoPago } from "@/domain/entities/Pago";
 import type { PagoRepository } from "@/domain/repositories/PagoRepository";
-import { calcularFechaFin, esPlanDeVisita } from "@/domain/entities/Plan";
+import { calcularFechaFin, esPaseDeCortesia, esPlanDeVisita } from "@/domain/entities/Plan";
 import { diaDePago, fechaDePago, type Suscripcion } from "@/domain/entities/Suscripcion";
 import type { PlanRepository } from "@/domain/repositories/PlanRepository";
 import type { SocioRepository } from "@/domain/repositories/SocioRepository";
@@ -63,6 +63,15 @@ export class AsignarPlan {
     const dia = revisarFechaDeCobro(entrada.fecha, this.reloj.hoy());
     if (!this.permitirOtraFecha && dia !== this.reloj.hoy()) throw new SinPermiso("registrar un cobro con fecha de otro día");
     const historial = await this.suscripciones.listarPorSocio(socio.id);
+    // El pase de cortesía (1 día a $0) es para conocer el gimnasio: una sola vez por persona.
+    if (esPaseDeCortesia(plan)) {
+      for (const s of historial.filter((x) => x.esVisita)) {
+        const anterior = await this.planes.obtenerPorId(s.planId);
+        if (anterior && esPaseDeCortesia(anterior)) {
+          throw new ErrorDeDominio(`${socio.nombre} ya usó su pase de cortesía el ${formatearFecha(s.fechaInicio)}. Es una sola vez por persona: cóbrale la visita.`, "planId");
+        }
+      }
+    }
     // Las visitas de un día no son membresías: no bloquean ni se renuevan.
     const ultima = ultimaMembresia(historial);
     if (ultima && ultima.fechaFin > dia) {

@@ -116,10 +116,14 @@ export function FormularioPlan({ plan, vendido = false }: { plan?: Plan; vendido
           nombre="precio"
           requerido
           valorInicial={v.precio}
-          // La visita siempre cuesta; una membresía puede ser de $0 (cortesía) y en pantalla dice «Gratis».
-          atributos={{ "data-regla": tipo === "visita" ? "precio" : "dinero", "data-que": "El precio", "data-falta": "Escribe el precio del plan." }}
+          // Cualquier plan puede ser de $0 (cortesía): en pantalla dice «Gratis».
+          atributos={{ "data-regla": "dinero", "data-que": "El precio", "data-falta": "Escribe el precio del plan." }}
         />
-        <Ayuda para="precio">{tipo === "visita" ? "La visita siempre tiene costo." : "Pon 0 si es una membresía gratis (cortesía)."}</Ayuda>
+        <Ayuda para="precio">
+          {tipo === "visita"
+            ? "Con precio, es la visita que cobra el mostrador. En 0 es un pase de cortesía (para conocer el gimnasio): se da al inscribir y una sola vez por persona."
+            : "Pon 0 si es una membresía gratis (cortesía)."}
+        </Ayuda>
       </div>
 
       {tipo === "membresia" && !fijo && (

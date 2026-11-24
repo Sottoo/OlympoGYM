@@ -1,4 +1,4 @@
-import { type DatosNuevoPlan, esPlanDeVisita, type Plan, validarNuevoPlan } from "@/domain/entities/Plan";
+import { type DatosNuevoPlan, esPaseDeCortesia, esPlanDeVisita, type Plan, validarNuevoPlan } from "@/domain/entities/Plan";
 import type { PlanRepository } from "@/domain/repositories/PlanRepository";
 import { ErrorDeDominio, NoEncontrado } from "@/domain/shared/ErrorDeDominio";
 import { limpiarEspacios } from "@/domain/shared/reglas";
@@ -12,13 +12,14 @@ export class ListarPlanes {
 }
 
 /**
- * Solo puede haber UNA visita activa: es la que cobra el mostrador a quien
- * llega sin membresía. Con dos, el mostrador tenía que adivinar cuál (tomaba la
- * más barata y cobraba $0.01 a todos).
+ * Solo puede haber UNA visita con precio activa: es la que cobra el mostrador a
+ * quien llega sin membresía. Con dos, el mostrador tenía que adivinar cuál
+ * (tomaba la más barata y cobraba $0.01 a todos). Los pases de cortesía (1 día
+ * a $0) no cuentan: el mostrador nunca los cobra.
  */
-async function asegurarUnaVisita(planes: PlanRepository, plan: Pick<Plan, "duracion" | "unidad">, exceptoId?: string) {
-  if (!esPlanDeVisita(plan)) return;
-  const otra = (await planes.listar({ soloActivos: true })).find((p) => p.activo && p.id !== exceptoId && esPlanDeVisita(p));
+async function asegurarUnaVisita(planes: PlanRepository, plan: Pick<Plan, "duracion" | "unidad" | "precio">, exceptoId?: string) {
+  if (!esPlanDeVisita(plan) || esPaseDeCortesia(plan)) return;
+  const otra = (await planes.listar({ soloActivos: true })).find((p) => p.activo && p.id !== exceptoId && esPlanDeVisita(p) && !esPaseDeCortesia(p));
   if (otra) {
     throw new ErrorDeDominio(
       `Ya hay una visita activa («${otra.nombre}»). Solo puede haber una, porque es la que cobra el mostrador: cámbiale el precio o desactívala primero.`,

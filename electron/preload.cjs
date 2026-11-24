@@ -19,6 +19,11 @@ contextBridge.exposeInMainWorld("olimpo", {
   },
   actualizarAhora: () => ipcRenderer.invoke("olimpo:actualizar-ahora"),
   buscarActualizacion: () => ipcRenderer.invoke("olimpo:buscar-actualizacion"),
+  alReiniciarseAgenteLector: (manejador) => {
+    const escucha = (_evento, fase) => manejador(fase === "inicio" ? "inicio" : "listo");
+    ipcRenderer.on("olimpo:agente-lector", escucha);
+    return () => ipcRenderer.removeListener("olimpo:agente-lector", escucha);
+  },
   alPedirActualizar: (manejador) => {
     const escucha = () => manejador();
     ipcRenderer.on("olimpo:mostrar-actualizacion", escucha);

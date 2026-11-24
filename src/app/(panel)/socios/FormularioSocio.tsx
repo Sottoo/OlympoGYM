@@ -177,7 +177,7 @@ export function FormularioSocio({ socio, fotoUrl, inscripcion }: Props) {
 
       <div className="flex flex-wrap items-center gap-3 border-t border-linea bg-hundido/60 px-5 py-4 sm:px-7">
         <BotonEnviar textoEnviando="Guardando…">
-          {socio ? "Guardar cambios" : plan?.esVisita ? `Registrar y cobrar visita · ${formatearDinero(plan.precio)}` : "Inscribir y cobrar"}
+          {socio ? "Guardar cambios" : plan?.esVisita ? (plan.precio === 0 ? "Registrar con pase de cortesía" : `Registrar y cobrar visita · ${formatearDinero(plan.precio)}`) : "Inscribir y cobrar"}
         </BotonEnviar>
         <Link href={socio ? `/socios/${socio.id}` : "/socios"} className="boton-secundario">
           Cancelar

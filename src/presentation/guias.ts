@@ -165,6 +165,7 @@ export const GUIAS = {
     reglas: [
       "Editar o eliminar un plan no cambia lo ya cobrado: cada socio conserva su membresía, su vencimiento y lo que pagó.",
       "Debe existir un plan de visita para cobrar a quien llega sin membresía.",
+      "Solo una visita con precio puede estar activa (es la que cobra el mostrador). Un plan de 1 día a $0 es un pase de cortesía para conocer el gimnasio: se da al inscribir y una sola vez por persona.",
     ],
   },
   mantenimiento: {

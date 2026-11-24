@@ -35,6 +35,12 @@ export interface PuenteEscritorio {
   buscarActualizacion?(): Promise<
     { estado: "al-dia"; publicada: string | null } | { estado: "lista"; version: string } | { estado: "error"; mensaje: string } | { estado: "desarrollo" }
   >;
+  /**
+   * El programa reinicia el agente de HID por su cuenta (al despertar de la
+   * suspensión o al desbloquear tras un rato): "inicio" antes de cerrarlo,
+   * "listo" cuando ya volvió a abrir.
+   */
+  alReiniciarseAgenteLector?(manejador: (fase: "inicio" | "listo") => void): () => void;
   /** Clic en la notificación de Windows: pide abrir el aviso para actualizar. */
   alPedirActualizar?(manejador: () => void): () => void;
 }
