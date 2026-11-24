@@ -1,4 +1,4 @@
-import type { Pago } from "@/domain/entities/Pago";
+import type { Devolucion, Pago } from "@/domain/entities/Pago";
 import { cumpleAniosEn, edadEn, type Socio } from "@/domain/entities/Socio";
 import { type SituacionMembresia, type Suscripcion, situacionDeMembresia, suscripcionVigenteOUltima } from "@/domain/entities/Suscripcion";
 import type { PagoRepository } from "@/domain/repositories/PagoRepository";
@@ -21,6 +21,7 @@ export interface DetalleSocio {
   deVisita: boolean;
   suscripciones: Suscripcion[];
   pagos: Pago[];
+  devoluciones: Devolucion[];
 }
 
 export class ObtenerDetalleSocio {
@@ -36,9 +37,10 @@ export class ObtenerDetalleSocio {
     const socio = await this.socios.obtenerPorId(socioId);
     if (!socio) throw new NoEncontrado("El socio");
 
-    const [suscripciones, pagos, fotoUrl] = await Promise.all([
+    const [suscripciones, pagos, devoluciones, fotoUrl] = await Promise.all([
       this.suscripciones.listarPorSocio(socioId),
       this.pagos.listarPorSocio(socioId),
+      this.pagos.devolucionesDeSocio(socioId),
       socio.foto ? this.fotos.urlTemporal(socio.foto) : null,
     ]);
     const hoy = this.reloj.hoy();
@@ -54,6 +56,7 @@ export class ObtenerDetalleSocio {
       deVisita: ultima?.esVisita ?? false,
       suscripciones,
       pagos,
+      devoluciones,
     };
   }
 }

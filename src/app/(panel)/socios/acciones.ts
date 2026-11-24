@@ -141,7 +141,25 @@ export async function accionCorregirMembresia(_: EstadoFormulario, formData: For
   redirect(`/socios/${socioId}?aviso=corregido`);
 }
 
-/** Cancela una membresía cobrada por error (la próxima o la de hoy) junto con su pago. */
+/** Devolución: regresa dinero de una membresía cobrada otro día; sale de la caja de hoy y la membresía termina. */
+export async function accionDevolverMembresia(_: EstadoFormulario, formData: FormData): Promise<EstadoFormulario> {
+  const socioId = texto(formData, "socioId");
+  try {
+    await (await casosDeUso()).devolverMembresia.ejecutar({
+      suscripcionId: texto(formData, "suscripcionId"),
+      monto: montoDe(formData) ?? 0,
+      metodoPago: texto(formData, "metodoPago") as MetodoPago,
+      motivo: texto(formData, "motivo"),
+    });
+  } catch (error) {
+    return fallo(error, formData);
+  }
+  actualizarVistas(socioId);
+  revalidatePath("/ventas");
+  redirect(`/socios/${socioId}?aviso=devuelto`);
+}
+
+/** Cancela una membresía cobrada por error (solo el mismo día que se cobró) junto con su pago. */
 export async function accionCancelarMembresia(socioId: string, suscripcionId: string): Promise<{ ok: true } | { ok: false; error: string }> {
   try {
     await (await casosDeUso()).cancelarMembresia.ejecutar(suscripcionId);

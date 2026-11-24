@@ -21,6 +21,8 @@ import {
 import { ConsultarBitacora } from "@/application/use-cases/bitacora/ConsultarBitacora";
 import { GuardarFondoDeCaja, ObtenerFondoDeCaja } from "@/application/use-cases/caja/FondoDeCaja";
 import type { FondoDeCajaRepository } from "@/domain/repositories/FondoDeCajaRepository";
+import type { NominaRepository } from "@/domain/repositories/NominaRepository";
+import { AnularPagoNomina, CambiarEstadoEmpleado, ConsultarNomina, GuardarEmpleado, ObtenerAvisoDeNomina, ObtenerNominaDelDia, RegistrarPagoNomina } from "@/application/use-cases/nomina/Nomina";
 import { BorrarHuella, IdentificarPorHuella, LeerToque, ListarHuellasDeSocio, RegistrarHuella } from "@/application/use-cases/huellas/Huellas";
 import { ObtenerResumen } from "@/application/use-cases/dashboard/ObtenerResumen";
 import { ObtenerMetricas } from "@/application/use-cases/metricas/ObtenerMetricas";
@@ -78,7 +80,7 @@ import { ObtenerDetalleSocio } from "@/application/use-cases/socios/ObtenerDetal
 import { RegistrarSocio } from "@/application/use-cases/socios/RegistrarSocio";
 import { RevisarCelular } from "@/application/use-cases/socios/celular";
 import { BuscarSociosParecidos, DetectarDuplicados, UnirSocios } from "@/application/use-cases/socios/Duplicados";
-import { AsignarPlan, CancelarMembresia, CorregirMembresia } from "@/application/use-cases/suscripciones/AsignarPlan";
+import { AsignarPlan, CancelarMembresia, CorregirMembresia, DevolverMembresia } from "@/application/use-cases/suscripciones/AsignarPlan";
 import { ObtenerCorteDelDia, RegistrarVenta } from "@/application/use-cases/ventas/Ventas";
 import type { AsistenciaRepository } from "@/domain/repositories/AsistenciaRepository";
 import type { BitacoraRepository } from "@/domain/repositories/BitacoraRepository";
@@ -112,6 +114,7 @@ import {
 import { SqliteMantenimientoRepository } from "./sqlite/mantenimiento";
 import { SqliteHuellaRepository } from "./sqlite/huellas";
 import { SqliteFondoDeCajaRepository } from "./sqlite/fondosDeCaja";
+import { SqliteNominaRepository } from "./sqlite/nomina";
 import { MotorFingerJet } from "./huellas/FingerJet";
 import { RelojSistema } from "./RelojSistema";
 
@@ -129,11 +132,13 @@ interface Repositorios {
   mantenimiento: MantenimientoRepository;
   huellas: HuellaRepository;
   fondos: FondoDeCajaRepository;
+  nomina: NominaRepository;
 }
 
 /** Repositorios sobre la base local, con el nombre de quien escribe (para la bitácora). */
 function repositoriosLocales(usuario: string): Repositorios {
-  const s = new Sesion(usuario);
+  // Lo del gimnasio no se guarda con la fecha de la computadora equivocada (ver horaReal.ts).
+  const s = new Sesion(usuario, true);
   return {
     socios: new SqliteSocioRepository(s),
     planes: new SqlitePlanRepository(s),
@@ -148,6 +153,7 @@ function repositoriosLocales(usuario: string): Repositorios {
     mantenimiento: new SqliteMantenimientoRepository(s),
     huellas: new SqliteHuellaRepository(s),
     fondos: new SqliteFondoDeCajaRepository(s),
+    nomina: new SqliteNominaRepository(s),
   };
 }
 
@@ -198,13 +204,14 @@ export const casosDeUso = cache(async () => {
     editarSocio: new EditarSocio(r.socios, reloj),
     cambiarFotoSocio: new CambiarFotoSocio(r.socios, r.fotos),
     quitarFotoSocio: new QuitarFotoSocio(r.socios, r.fotos),
-    darDeBajaSocio: soloCon("socios.baja", new DarDeBajaSocio(r.socios, reloj)),
+    darDeBajaSocio: soloCon("socios.baja", new DarDeBajaSocio(r.socios, r.suscripciones, reloj)),
     reactivarSocio: soloCon("socios.baja", new ReactivarSocio(r.socios)),
     eliminarSocioDefinitivo: soloCon("socios.eliminar", new EliminarSocioDefinitivo(r.socios, r.fotos)),
     buscarSociosParecidos: new BuscarSociosParecidos(r.socios),
     detectarDuplicados: new DetectarDuplicados(r.socios),
     unirSocios: soloCon("socios.eliminar", new UnirSocios(r.socios, r.fotos)),
-    corregirMembresia: soloCon("cobros.corregir", new CorregirMembresia(r.planes, r.suscripciones)),
+    corregirMembresia: soloCon("cobros.corregir", new CorregirMembresia(r.planes, r.suscripciones, reloj)),
+    devolverMembresia: soloCon("cobros.corregir", new DevolverMembresia(r.suscripciones, r.pagos, reloj)),
     cancelarMembresia: soloCon("cobros.corregir", new CancelarMembresia(r.suscripciones, reloj)),
     // Planes y membresías
     listarPlanes: new ListarPlanes(r.planes),
@@ -233,6 +240,14 @@ export const casosDeUso = cache(async () => {
     registrarVenta: new RegistrarVenta(r.productos, r.ventas, reloj),
     obtenerCorteDelDia: new ObtenerCorteDelDia(r.ventas, r.pagos, reloj),
     obtenerFondoDeCaja: new ObtenerFondoDeCaja(r.fondos, reloj),
+    // Nómina: solo quien tiene el permiso (sueldos). Lo del día sí lo ve el corte de caja de quien lo vea.
+    consultarNomina: soloCon("nomina.gestionar", new ConsultarNomina(r.nomina, reloj)),
+    guardarEmpleado: soloCon("nomina.gestionar", new GuardarEmpleado(r.nomina)),
+    cambiarEstadoEmpleado: soloCon("nomina.gestionar", new CambiarEstadoEmpleado(r.nomina)),
+    registrarPagoNomina: soloCon("nomina.gestionar", new RegistrarPagoNomina(r.nomina, reloj)),
+    anularPagoNomina: soloCon("nomina.gestionar", new AnularPagoNomina(r.nomina, reloj)),
+    obtenerAvisoDeNomina: new ObtenerAvisoDeNomina(r.nomina, reloj),
+    obtenerNominaDelDia: new ObtenerNominaDelDia(r.nomina, reloj),
     guardarFondoDeCaja: new GuardarFondoDeCaja(r.fondos, reloj, puede(rol, "cobros.corregir", extras)),
     // Mostrador y asistencias
     buscarSocioEnMostrador: new BuscarSocioEnMostrador(r.socios, r.suscripciones, reloj),

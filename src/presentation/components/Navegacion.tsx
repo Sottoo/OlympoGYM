@@ -17,6 +17,7 @@ const PRINCIPALES: { href: string; texto: string; icono: NombreIcono }[] = [
 ];
 const ADMINISTRACION: { href: string; texto: string; icono: NombreIcono }[] = [
   { href: "/personal", texto: "Personal", icono: "usuario" },
+  { href: "/nomina", texto: "Nómina", icono: "billete" },
   { href: "/bitacora", texto: "Bitácora", icono: "bitacora" },
   { href: "/respaldos", texto: "Respaldos", icono: "respaldos" },
 ];

@@ -1,4 +1,4 @@
-import type { MetodoPago, PagoDelDia } from "@/domain/entities/Pago";
+import type { DevolucionDelDia, MetodoPago, PagoDelDia } from "@/domain/entities/Pago";
 import type { PagoRepository } from "@/domain/repositories/PagoRepository";
 import { type DatosNuevaVenta, validarNuevaVenta, type Venta } from "@/domain/entities/Venta";
 import type { ProductoRepository } from "@/domain/repositories/ProductoRepository";
@@ -44,7 +44,11 @@ export interface CorteDelDia {
   piezas: number;
   /** Membresías y visitas */
   cobros: PagoDelDia[];
+  /** Lo que entró por membresías y visitas, ya restadas las devoluciones del día. */
   totalMembresias: number;
+  /** Dinero devuelto ese día (sale de la caja de ese día). */
+  devoluciones: DevolucionDelDia[];
+  totalDevoluciones: number;
   /** Todo lo que entró a caja ese día, y cuánto por método (tienda + membresías). */
   total: number;
   porMetodo: Record<MetodoPago, { tienda: number; membresias: number }>;
@@ -66,7 +70,7 @@ export class ObtenerCorteDelDia {
 
   async ejecutar(fecha?: FechaISO): Promise<CorteDelDia> {
     const dia = fecha ?? this.reloj.hoy();
-    const [ventas, cobros] = await Promise.all([this.ventas.listarEntre(dia, dia), this.pagos.listarDelDia(dia)]);
+    const [ventas, cobros, devoluciones] = await Promise.all([this.ventas.listarEntre(dia, dia), this.pagos.listarDelDia(dia), this.pagos.devolucionesDelDia(dia)]);
     const porMetodo: CorteDelDia["porMetodo"] = {
       efectivo: { tienda: 0, membresias: 0 },
       transferencia: { tienda: 0, membresias: 0 },
@@ -84,6 +88,13 @@ export class ObtenerCorteDelDia {
       totalMembresias += c.monto;
       if (porMetodo[c.metodo]) porMetodo[c.metodo].membresias += c.monto;
     }
+    // Una devolución sale de la caja del día en que se hace, por el mismo medio en que se devolvió.
+    let totalDevoluciones = 0;
+    for (const d of devoluciones) {
+      totalDevoluciones += d.monto;
+      totalMembresias -= d.monto;
+      if (porMetodo[d.metodo]) porMetodo[d.metodo].membresias -= d.monto;
+    }
     for (const m of Object.values(porMetodo)) {
       m.tienda = centavos(m.tienda);
       m.membresias = centavos(m.membresias);
@@ -95,6 +106,8 @@ export class ObtenerCorteDelDia {
       piezas,
       cobros,
       totalMembresias: centavos(totalMembresias),
+      devoluciones,
+      totalDevoluciones: centavos(totalDevoluciones),
       total: centavos(totalTienda + totalMembresias),
       porMetodo,
     };

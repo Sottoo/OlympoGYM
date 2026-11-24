@@ -1,7 +1,7 @@
 import "server-only";
-import type { Asistencia, DatosNuevaAsistencia } from "@/domain/entities/Asistencia";
+import { type Asistencia, type DatosNuevaAsistencia, MINUTOS_ENTRE_ENTRADAS } from "@/domain/entities/Asistencia";
 import type { DatosNuevoMovimiento, MovimientoInventario, TipoMovimiento } from "@/domain/entities/MovimientoInventario";
-import type { DatosNuevoPago, MetodoPago, Pago, PagoDelDia } from "@/domain/entities/Pago";
+import type { DatosNuevaDevolucion, DatosNuevoPago, Devolucion, DevolucionDelDia, MetodoPago, Pago, PagoDelDia } from "@/domain/entities/Pago";
 import type { DatosNuevoPlan, Plan, UnidadDuracion } from "@/domain/entities/Plan";
 import {
   type CategoriaProducto,
@@ -27,7 +27,8 @@ import type { SocioRepository } from "@/domain/repositories/SocioRepository";
 import type { SuscripcionRepository } from "@/domain/repositories/SuscripcionRepository";
 import type { VentaRepository } from "@/domain/repositories/VentaRepository";
 import { ErrorDeDominio, NoEncontrado } from "@/domain/shared/ErrorDeDominio";
-import type { FechaISO } from "@/domain/shared/fechas";
+import { formatearFecha } from "@/shared/formato";
+import { diasEntre, type FechaISO, sumarDias } from "@/domain/shared/fechas";
 import { nuevoId, type Sesion } from "./baseDeDatos";
 
 /* ── Filas tal como vienen de SQLite ─────────────────────────────────── */
@@ -65,6 +66,19 @@ const aSuscripcion = (f: FilaSuscripcion): Suscripcion => ({
   id: f.id, socioId: f.socio_id, planId: f.plan_id, planNombre: f.plan_nombre ?? "Plan", fechaInicio: f.fecha_inicio, fechaFin: f.fecha_fin, creadoEn: f.creado_en,
   esVisita: f.plan_unidad === "dias" && f.plan_duracion === 1,
   porMeses: f.plan_unidad === "meses",
+});
+interface FilaDevolucion {
+  id: string;
+  socio_id: string;
+  suscripcion_id: string | null;
+  monto: number;
+  metodo: MetodoPago;
+  fecha: string;
+  motivo: string;
+  creado_en: string;
+}
+const aDevolucion = (f: FilaDevolucion): Devolucion => ({
+  id: f.id, socioId: f.socio_id, suscripcionId: f.suscripcion_id, monto: f.monto, metodo: f.metodo, fecha: f.fecha, motivo: f.motivo, creadoEn: f.creado_en,
 });
 const aPago = (f: FilaPago): Pago => ({
   id: f.id, socioId: f.socio_id, suscripcionId: f.suscripcion_id, monto: f.monto, metodo: f.metodo, fecha: f.fecha, nota: f.nota, creadoEn: f.creado_en,
@@ -202,8 +216,26 @@ export class SqliteSocioRepository implements SocioRepository {
     return this.s.escribir(() => {
       const a = this.s.una<FilaSocio>("select * from socios where id = ?", conservarId)!;
       const b = this.s.una<FilaSocio>("select * from socios where id = ?", duplicadoId)!;
-      for (const tabla of ["suscripciones", "pagos", "asistencias"]) {
+      for (const tabla of ["suscripciones", "pagos", "devoluciones", "asistencias"]) {
         this.s.ejecutar(`update ${tabla} set socio_id = ? where socio_id = ?`, conservarId, duplicadoId);
+      }
+      // Si los dos registros tenían membresía pagada, quedaban encimadas: la persona pagó dos veces
+      // los mismos días y los perdía (comprobado: 26 días). Se encadenan: cada una conserva los días
+      // que pagó, pero empieza al día siguiente de que termina la anterior. Queda en la bitácora.
+      const membresias = this.s.todas<{ id: string; fecha_inicio: string; fecha_fin: string }>(
+        `select s.id, s.fecha_inicio, s.fecha_fin from suscripciones s join planes p on p.id = s.plan_id
+          where s.socio_id = ? and not (p.unidad = 'dias' and p.duracion = 1)
+          order by s.fecha_inicio, s.creado_en`,
+        conservarId,
+      );
+      let finAnterior = "";
+      for (const m of membresias) {
+        if (finAnterior && m.fecha_inicio <= finAnterior) {
+          const inicio = sumarDias(finAnterior, 1);
+          const fin = sumarDias(inicio, diasEntre(m.fecha_inicio, m.fecha_fin));
+          this.s.ejecutar("update suscripciones set fecha_inicio = ?, fecha_fin = ? where id = ?", inicio, fin, m.id);
+          finAnterior = fin;
+        } else if (m.fecha_fin > finAnterior) finAnterior = m.fecha_fin;
       }
       // Un dedo solo puede estar una vez: si los dos lo registraron, se queda el del que se conserva.
       this.s.ejecutar("delete from huellas where socio_id = ? and dedo in (select dedo from huellas where socio_id = ?)", duplicadoId, conservarId);
@@ -350,6 +382,31 @@ export class SqliteSuscripcionRepository implements SuscripcionRepository {
   async crearConPago(d: DatosNuevaSuscripcion, pago: Omit<DatosNuevoPago, "suscripcionId">) {
     const id = nuevoId();
     this.s.escribir(() => {
+      // Candado contra cobros dobles. Los casos de uso ya revisan que no tenga otra, pero dos cobros
+      // que llegan a la vez (doble clic, dos pantallas) pasaban los dos esa revisión antes de que
+      // cualquiera guardara: quedaban dos membresías y dos pagos por el mismo periodo (comprobado).
+      // Aquí se revisa en la misma transacción que guarda, así que el segundo ya ve al primero.
+      const plan = this.s.una<{ unidad: string; duracion: number }>("select unidad, duracion from planes where id = ?", d.planId);
+      const esVisita = plan?.unidad === "dias" && plan.duracion === 1;
+      const choca = esVisita
+        ? this.s.una<{ fecha_inicio: string; fecha_fin: string }>(
+            `select s.fecha_inicio, s.fecha_fin from suscripciones s join planes p on p.id = s.plan_id
+              where s.socio_id = ? and p.unidad = 'dias' and p.duracion = 1 and s.fecha_inicio = ?`,
+            d.socioId, d.fechaInicio,
+          )
+        : this.s.una<{ fecha_inicio: string; fecha_fin: string }>(
+            `select s.fecha_inicio, s.fecha_fin from suscripciones s join planes p on p.id = s.plan_id
+              where s.socio_id = ? and not (p.unidad = 'dias' and p.duracion = 1)
+                and s.fecha_inicio <= ? and s.fecha_fin >= ?`,
+            d.socioId, d.fechaFin, d.fechaInicio,
+          );
+      if (choca) {
+        throw new ErrorDeDominio(
+          esVisita
+            ? "La visita de ese día ya está cobrada (¿se dio doble clic?). No se cobró otra."
+            : `Ya tiene una membresía para esas fechas (del ${formatearFecha(choca.fecha_inicio)} al ${formatearFecha(choca.fecha_fin)}). No se cobró otra (¿se dio doble clic?).`,
+        );
+      }
       this.s.ejecutar("insert into suscripciones (id, socio_id, plan_id, fecha_inicio, fecha_fin) values (?, ?, ?, ?, ?)", id, d.socioId, d.planId, d.fechaInicio, d.fechaFin);
       this.s.ejecutar(
         "insert into pagos (id, socio_id, suscripcion_id, monto, metodo, fecha, nota) values (?, ?, ?, ?, ?, ?, ?)",
@@ -398,7 +455,51 @@ export class SqlitePagoRepository implements PagoRepository {
   }
 
   async sumarEntre(desde: FechaISO, hasta: FechaISO) {
-    return this.s.una<{ total: number }>("select coalesce(sum(monto), 0) as total from pagos where fecha between ? and ?", desde, hasta)!.total;
+    // Las devoluciones restan el día en que se hacen (los cortes y métricas de días pasados no cambian).
+    return this.s.una<{ total: number }>(
+      `select coalesce((select sum(monto) from pagos where fecha between ?1 and ?2), 0)
+            - coalesce((select sum(monto) from devoluciones where fecha between ?1 and ?2), 0) as total`,
+      desde, hasta,
+    )!.total;
+  }
+
+  async montosDeMembresia(suscripcionId: string) {
+    return this.s.una<{ pagado: number; devuelto: number }>(
+      `select coalesce((select sum(monto) from pagos where suscripcion_id = ?1), 0) as pagado,
+              coalesce((select sum(monto) from devoluciones where suscripcion_id = ?1), 0) as devuelto`,
+      suscripcionId,
+    )!;
+  }
+
+  async registrarDevolucion(d: DatosNuevaDevolucion, membresia: { id: string; fechaInicio: FechaISO; fechaFin: FechaISO }) {
+    const id = nuevoId();
+    this.s.escribir(() => {
+      this.s.ejecutar(
+        "insert into devoluciones (id, socio_id, suscripcion_id, monto, metodo, fecha, motivo) values (?, ?, ?, ?, ?, ?, ?)",
+        id, d.socioId, d.suscripcionId, d.monto, d.metodo, d.fecha, d.motivo,
+      );
+      this.s.ejecutar("update suscripciones set fecha_inicio = ?, fecha_fin = ? where id = ?", membresia.fechaInicio, membresia.fechaFin, membresia.id);
+    });
+    return aDevolucion(this.s.una<FilaDevolucion>("select * from devoluciones where id = ?", id)!);
+  }
+
+  async devolucionesDelDia(dia: FechaISO): Promise<DevolucionDelDia[]> {
+    return this.s
+      .todas<FilaDevolucion & { socio_nombre: string; plan_nombre: string | null }>(
+        `select d.*, so.nombre || ' ' || so.apellidos as socio_nombre, pl.nombre as plan_nombre
+           from devoluciones d
+           join socios so on so.id = d.socio_id
+           left join suscripciones su on su.id = d.suscripcion_id
+           left join planes pl on pl.id = su.plan_id
+          where d.fecha = ?
+          order by d.creado_en desc`,
+        dia,
+      )
+      .map((f) => ({ ...aDevolucion(f), socioNombre: f.socio_nombre, planNombre: f.plan_nombre }));
+  }
+
+  async devolucionesDeSocio(socioId: string) {
+    return this.s.todas<FilaDevolucion>("select * from devoluciones where socio_id = ? order by fecha desc, creado_en desc", socioId).map(aDevolucion);
   }
 
   async listarDelDia(dia: FechaISO): Promise<PagoDelDia[]> {
@@ -671,7 +772,15 @@ export class SqliteAsistenciaRepository implements AsistenciaRepository {
 
   async registrar(d: DatosNuevaAsistencia) {
     const id = nuevoId();
-    this.s.escribir(() => this.s.ejecutar("insert into asistencias (id, socio_id, fecha, excepcion) values (?, ?, ?, ?)", id, d.socioId, d.fecha, d.excepcion));
+    this.s.escribir(() => {
+      // Candado contra entradas dobles (dos registros que llegan a la vez pasaban la revisión del mostrador).
+      const reciente = this.s.una(
+        "select 1 as si from asistencias where socio_id = ? and registrada_en > strftime('%Y-%m-%dT%H:%M:%fZ', 'now', ?)",
+        d.socioId, `-${MINUTOS_ENTRE_ENTRADAS} minutes`,
+      );
+      if (reciente) throw new ErrorDeDominio("Su entrada ya se registró hace un momento.");
+      this.s.ejecutar("insert into asistencias (id, socio_id, fecha, excepcion) values (?, ?, ?, ?)", id, d.socioId, d.fecha, d.excepcion);
+    });
     return aAsistencia(this.s.una<FilaAsistencia>("select * from asistencias where id = ?", id)!);
   }
 

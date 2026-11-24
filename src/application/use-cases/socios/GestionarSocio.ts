@@ -1,5 +1,8 @@
 import { type DatosNuevoSocio, type Socio, validarMotivoBaja, validarNuevoSocio } from "@/domain/entities/Socio";
 import type { SocioRepository } from "@/domain/repositories/SocioRepository";
+import type { SuscripcionRepository } from "@/domain/repositories/SuscripcionRepository";
+import { fechaDePago } from "@/domain/entities/Suscripcion";
+import { formatearFecha } from "@/shared/formato";
 import type { AlmacenFotos } from "@/domain/services/AlmacenFotos";
 import type { Reloj } from "@/domain/services/Reloj";
 import { ErrorDeDominio, NoEncontrado } from "@/domain/shared/ErrorDeDominio";
@@ -23,10 +26,15 @@ export class EditarSocio {
 /**
  * Da de baja a un socio. No se borra nada: su historial de pagos y
  * membresías se conserva y deja de contar como activo.
+ *
+ * No se puede mientras tenga una membresía vigente (o ya pagada para
+ * después): la baja no congela los días, que siguen corriendo, así que darlo
+ * de baja solo le quitaría lo que ya pagó. Se da de baja cuando venza.
  */
 export class DarDeBajaSocio {
   constructor(
     private readonly socios: SocioRepository,
+    private readonly suscripciones: SuscripcionRepository,
     private readonly reloj: Reloj,
   ) {}
 
@@ -35,6 +43,12 @@ export class DarDeBajaSocio {
     const socio = await this.socios.obtenerPorId(socioId);
     if (!socio) throw new NoEncontrado("El socio");
     if (!socio.activo) throw new ErrorDeDominio("Este socio ya estaba dado de baja.");
+    const vigente = (await this.suscripciones.listarPorSocio(socioId)).find((s) => !s.esVisita && s.fechaFin >= this.reloj.hoy());
+    if (vigente) {
+      throw new ErrorDeDominio(
+        `${socio.nombre} tiene su membresía vigente (vence el ${formatearFecha(fechaDePago(vigente))}). Sus días siguen corriendo aunque no venga: se podrá dar de baja cuando venza.`,
+      );
+    }
     await this.socios.darDeBaja(socioId, this.reloj.hoy(), motivoFinal);
   }
 }

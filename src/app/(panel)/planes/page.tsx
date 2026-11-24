@@ -8,7 +8,7 @@ import { Icono } from "@/presentation/components/Icono";
 import { Insignia } from "@/presentation/components/Insignia";
 import { MensajeExito, Vacio } from "@/presentation/components/Mensajes";
 import { Panel } from "@/presentation/components/Panel";
-import { formatearDinero } from "@/shared/formato";
+import { precioOGratis } from "@/shared/formato";
 import { AccionesDelPlan } from "./AccionesDelPlan";
 import { FormularioPlan } from "./FormularioPlan";
 
@@ -50,7 +50,7 @@ export default async function PaginaPlanes({ searchParams }: Props) {
         {p.descripcion && <span className="text-sm text-gris">{p.descripcion}</span>}
       </td>
       <td className="whitespace-nowrap text-tinta-suave">{describirDuracion(p)}</td>
-      <td className={`numero cifra text-xl ${p.activo ? "" : "text-gris"}`}>{formatearDinero(p.precio)}</td>
+      <td className={`numero cifra text-xl ${p.activo ? "" : "text-gris"}`}>{precioOGratis(p.precio)}</td>
       <td>
         <div className="flex justify-end gap-2">
           <Link href={`/planes?editar=${p.id}`} className="boton-secundario boton-chico" aria-label={`Editar ${p.nombre}`}>

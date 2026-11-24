@@ -36,6 +36,7 @@ export const PERMISOS = {
   "exportar": "exportar a Excel",
   "personal.gestionar": "administrar las cuentas del personal",
   "mantenimiento.gestionar": "registrar mantenimientos, pagos a técnicos ni ver sus costos",
+  "nomina.gestionar": "registrar ni ver la nómina (sueldos de los empleados)",
 } as const;
 
 export type Permiso = keyof typeof PERMISOS;
@@ -93,6 +94,10 @@ export const PERMISOS_AJUSTABLES: { grupo: string; permisos: { permiso: Permiso;
     grupo: "Máquinas",
     permisos: [{ permiso: "mantenimiento.gestionar", texto: "Registrar mantenimientos, pagos a técnicos y ver sus costos" }],
   },
+  {
+    grupo: "Nómina",
+    permisos: [{ permiso: "nomina.gestionar", texto: "Registrar y ver la nómina (sueldos de los empleados)", delicado: true }],
+  },
 ];
 
 /** Nunca se le dan a recepción: administrar cuentas y permisos, y los respaldos (restaurar reemplaza todo). */
@@ -121,5 +126,6 @@ export const PERMISO_DE_SECCION: Partial<Record<string, Permiso>> = {
   "/bitacora": "bitacora.ver",
   "/respaldos": "respaldos.gestionar",
   "/personal": "personal.gestionar",
+  "/nomina": "nomina.gestionar",
   "/inventario/nuevo": "inventario.gestionar",
 };

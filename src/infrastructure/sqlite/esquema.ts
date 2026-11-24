@@ -26,6 +26,9 @@ const COLUMNAS_BITACORA: Record<string, string[]> = {
   abonos_mantenimiento: ["id", "mantenimiento_id", "monto", "metodo", "fecha", "nota"],
   reportes_falla: ["id", "equipo_id", "descripcion", "fuera_de_servicio", "reportado_por", "atendido_en", "cierre"],
   fondos_de_caja: ["id", "fecha", "monto"],
+  devoluciones: ["id", "socio_id", "suscripcion_id", "monto", "metodo", "fecha", "motivo"],
+  empleados: ["id", "nombre", "puesto", "sueldo_semanal", "activo"],
+  pagos_nomina: ["id", "empleado_id", "semana", "monto", "metodo", "fecha", "nota"],
 };
 
 const json = (fila: "new" | "old", columnas: string[]) => `json_object(${columnas.map((c) => `'${c}', ${fila}.${c}`).join(", ")})`;
@@ -453,5 +456,64 @@ const fondoDeCaja = /* sql */ `
   ${disparador("fondos_de_caja", "cambio")}
 `;
 
+/**
+ * v12 — Devoluciones. Desde el día siguiente a un cobro ya no se borra ni se
+ * corrige (el corte de ese día ya se contó): si hay que regresar dinero, se
+ * registra una devolución HOY, que sale de la caja de hoy, con su motivo, y la
+ * membresía termina. Los cortes pasados nunca cambian. Queda en la bitácora.
+ */
+const devoluciones = /* sql */ `
+  create table devoluciones (
+    id             text primary key,
+    socio_id       text not null references socios (id) on delete cascade,
+    suscripcion_id text references suscripciones (id) on delete set null,
+    monto          real not null check (monto > 0),
+    metodo         text not null check (metodo in ('efectivo', 'transferencia', 'tarjeta')),
+    fecha          text not null,
+    motivo         text not null check (length(motivo) >= 3),
+    creado_en      text not null default ${AHORA}
+  );
+  create index devoluciones_fecha on devoluciones (fecha);
+  create index devoluciones_socio on devoluciones (socio_id);
+  ${disparador("devoluciones", "alta")}
+  ${disparador("devoluciones", "cambio")}
+  ${disparador("devoluciones", "eliminacion")}
+`;
+
+/**
+ * v13 — Nómina. Empleados del gimnasio (no son cuentas del programa) y lo que
+ * se les paga por semana (lunes a viernes). Un pago por empleado y semana: la
+ * base misma lo impide (unique). El pago en efectivo sale de la caja del día en
+ * que se paga. Todo queda en la bitácora.
+ */
+const nomina = /* sql */ `
+  create table empleados (
+    id             text primary key,
+    nombre         text not null check (length(nombre) >= 2),
+    puesto         text,
+    sueldo_semanal real check (sueldo_semanal is null or sueldo_semanal >= 0),
+    activo         integer not null default 1,
+    creado_en      text not null default ${AHORA}
+  );
+  create table pagos_nomina (
+    id          text primary key,
+    empleado_id text not null references empleados (id) on delete restrict,
+    semana      text not null,
+    monto       real not null check (monto > 0),
+    metodo      text not null check (metodo in ('efectivo', 'transferencia')),
+    fecha       text not null,
+    nota        text,
+    creado_en   text not null default ${AHORA},
+    unique (empleado_id, semana)
+  );
+  create index pagos_nomina_fecha on pagos_nomina (fecha);
+  create index pagos_nomina_semana on pagos_nomina (semana);
+  ${disparador("empleados", "alta")}
+  ${disparador("empleados", "cambio")}
+  ${disparador("pagos_nomina", "alta")}
+  ${disparador("pagos_nomina", "cambio")}
+  ${disparador("pagos_nomina", "eliminacion")}
+`;
+
 /** Migraciones en orden. La posición + 1 es la versión que queda en `user_version`. */
-export const MIGRACIONES: string[] = [inicial, sinRecordatorios, ventaAGranel, mantenimiento, fotoDeProducto, huellas, borradoDefinitivo, equiposEliminados, planesEliminados, codigoConDueno, fondoDeCaja];
+export const MIGRACIONES: string[] = [inicial, sinRecordatorios, ventaAGranel, mantenimiento, fotoDeProducto, huellas, borradoDefinitivo, equiposEliminados, planesEliminados, codigoConDueno, fondoDeCaja, devoluciones, nomina];

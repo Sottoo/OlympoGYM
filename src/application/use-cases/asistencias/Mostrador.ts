@@ -62,9 +62,14 @@ export interface PlanDeVisita {
   precio: number;
 }
 
-/** El plan con el que se cobra una visita suelta: el activo de 1 día más barato. */
+/**
+ * El plan con el que se cobra una visita suelta: el de 1 día activo. Solo
+ * puede haber uno (ver GestionarPlanes). Si quedaron dos de antes de esa regla,
+ * se toma el de precio normal (el más caro), nunca uno de cortesía: antes se
+ * tomaba el más barato y una «visita para conocer» de $0.01 se cobraba a todos.
+ */
 export async function buscarPlanDeVisita(planes: PlanRepository): Promise<PlanDeVisita | null> {
-  const deUnDia = (await planes.listar({ soloActivos: true })).filter((p) => p.activo && esPlanDeVisita(p)).sort((a, b) => a.precio - b.precio);
+  const deUnDia = (await planes.listar({ soloActivos: true })).filter((p) => p.activo && esPlanDeVisita(p) && p.precio > 0).sort((a, b) => b.precio - a.precio);
   return deUnDia[0] ? { planId: deUnDia[0].id, nombre: deUnDia[0].nombre, precio: deUnDia[0].precio } : null;
 }
 

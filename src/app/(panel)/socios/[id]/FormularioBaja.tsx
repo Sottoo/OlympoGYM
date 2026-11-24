@@ -18,12 +18,24 @@ export function FormularioBaja({ socioId, tieneMembresiaVigente, alCancelar }: {
   const [estado, accion] = useActionState(accionDarDeBaja, estadoInicial);
   const [motivo, setMotivo] = useState(estado.valores?.motivo ?? "");
 
+  // Con membresía vigente no se da de baja: sus días siguen corriendo (el servidor también lo revisa).
+  if (tieneMembresiaVigente) {
+    return (
+      <div className="grid gap-4">
+        <p className="text-[0.9rem] text-tinta-suave">
+          <strong className="font-semibold text-tinta">Tiene una membresía vigente.</strong> Sus días siguen corriendo aunque no venga, así que se podrá dar de
+          baja cuando venza.
+        </p>
+        <PieDelDialogo alCancelar={alCancelar} />
+      </div>
+    );
+  }
+
   return (
     <Formulario action={accion} estado={estado} className="grid gap-4">
       <input type="hidden" name="socioId" value={socioId} />
       <p className="text-[0.9rem] text-tinta-suave">
         Queda en espera con todo su historial y se puede reactivar cuando regrese.
-        {tieneMembresiaVigente && <strong className="font-semibold text-tinta"> Todavía tiene una membresía vigente.</strong>}
       </p>
       <div className="grid gap-4">
         <div>

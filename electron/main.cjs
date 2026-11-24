@@ -26,6 +26,7 @@ const {
   instalarAlSalir,
 } = require("./actualizador.cjs");
 const { raizDelCodigo, confirmarVersion, revertirVersion, limpiarVersionesViejas } = require("./versiones.cjs");
+const { reiniciarAgente } = require("./agenteHid.cjs");
 
 const NOMBRE = "Olimpo GYM";
 const MODO_DEV = process.argv.includes("--dev");
@@ -233,6 +234,14 @@ function registrarPuente() {
     if (!delPrograma(evento)) return { ok: false, error: "Acción no permitida." };
     return instalarProgramaDelLector();
   });
+  // El agente del lector de huellas se quedó con el lector apartado o se cayó: se reinicia (ver agenteHid.cjs).
+  ipcMain.handle("olimpo:reiniciar-agente-lector", async (evento, opciones) => {
+    if (!delPrograma(evento)) return { ok: false, error: "Acción no permitida." };
+    const forzar = Boolean(opciones?.forzar);
+    const r = await reiniciarAgente({ forzar });
+    anotarEnRegistroDelLector(`agente de HID (${forzar ? "reiniciar" : "abrir si no corre"}): ${r.ok ? r.accion : `falló: ${r.error}`}`);
+    return r;
+  });
   ipcMain.handle("olimpo:actualizacion-lista", (evento) => (delPrograma(evento) ? versionLista() : null));
   // Botón «Buscar actualización»: revisa ya; si hay versión nueva, al terminar de bajarla abre la ventana de actualizar.
   ipcMain.handle("olimpo:buscar-actualizacion", async (evento) => {
@@ -306,6 +315,17 @@ function esDeLaApp(url) {
 }
 
 /** La petición viene de la ventana del programa (no de otra página). */
+/** Misma bitácora del lector que usa el servidor (datos/huellas.log): ahí se ve todo lo del lector junto. */
+function anotarEnRegistroDelLector(texto) {
+  try {
+    const carpeta = path.join(app.getPath("userData"), "datos");
+    fs.mkdirSync(carpeta, { recursive: true });
+    fs.appendFileSync(path.join(carpeta, "huellas.log"), `${new Date().toISOString()} ${texto}\n`);
+  } catch {
+    // Solo es para diagnosticar.
+  }
+}
+
 function delPrograma(evento) {
   try {
     return esDeLaApp(evento.senderFrame?.url ?? "") && !evento.senderFrame.url.startsWith("data:");

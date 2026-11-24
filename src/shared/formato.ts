@@ -35,6 +35,11 @@ export function formatearDinero(monto: number): string {
   return Number.isInteger(monto) ? pesos.format(monto) : pesosConCentavos.format(monto);
 }
 
+/** Precio de un plan o monto de una membresía: $0 es una cortesía y se dice «Gratis». */
+export function precioOGratis(monto: number): string {
+  return monto === 0 ? "Gratis" : formatearDinero(monto);
+}
+
 /** Fecha local (AAAA-MM-DD) de un instante guardado en UTC: lo dado de alta a las 19:00 del 31 sigue siendo del 31. */
 export function fechaLocal(instante: string, zonaHoraria: string): FechaISO {
   return new Intl.DateTimeFormat("en-CA", { timeZone: zonaHoraria }).format(new Date(instante));

@@ -21,7 +21,8 @@ export const dynamic = "force-dynamic";
 export default async function PaginaHoy() {
   const casos = await casosDeUso();
   const gestionaMantenimiento = await tienePermiso("mantenimiento.gestionar");
-  const [r, hoy, habituales, gestionaRespaldos, maquinas, gastos, corte, salidas, fondo, corrigeCobros] = await Promise.all([
+  const gestionaNomina = await tienePermiso("nomina.gestionar");
+  const [r, hoy, habituales, gestionaRespaldos, maquinas, gastos, corte, salidas, fondo, corrigeCobros, nomina, avisoNomina] = await Promise.all([
     casos.obtenerResumen.ejecutar(),
     casos.obtenerEntradasDeHoy.ejecutar(),
     casos.obtenerHabituales.ejecutar(5),
@@ -32,16 +33,19 @@ export default async function PaginaHoy() {
     casos.obtenerSalidasDelDia.ejecutar(),
     casos.obtenerFondoDeCaja.ejecutar(),
     tienePermiso("cobros.corregir"),
+    casos.obtenerNominaDelDia.ejecutar(),
+    gestionaNomina ? casos.obtenerAvisoDeNomina.ejecutar() : null,
   ]);
   // Corte del día: lo que entró por el gimnasio (membresías y visitas) y por la tienda.
   const efectivoCobrado = corte.porMetodo.efectivo.tienda + corte.porMetodo.efectivo.membresias;
   const transferencias = corte.porMetodo.transferencia.tienda + corte.porMetodo.transferencia.membresias;
-  // En el cajón: el fondo con que empezó + lo cobrado en efectivo − lo que salió en pagos.
-  const enCaja = Math.round(((fondo.monto ?? 0) + efectivoCobrado - salidas.efectivo) * 100) / 100;
+  // En el cajón: el fondo con que empezó + lo cobrado en efectivo − lo que salió en pagos (mantenimiento y nómina).
+  const salioDeCaja = salidas.efectivo + nomina.efectivo;
+  const enCaja = Math.round(((fondo.monto ?? 0) + efectivoCobrado - salioDeCaja) * 100) / 100;
   const detalleCaja = [
     fondo.monto !== null ? `Fondo ${formatearDinero(fondo.monto)}` : "Sin fondo anotado",
     `cobrado ${formatearDinero(efectivoCobrado)}`,
-    salidas.efectivo > 0 ? `salió ${formatearDinero(salidas.efectivo)}` : "",
+    salioDeCaja > 0 ? `salió ${formatearDinero(salioDeCaja)}` : "",
   ]
     .filter(Boolean)
     .join(" · ");
@@ -49,6 +53,10 @@ export default async function PaginaHoy() {
   const dia = diaDeLaSemana(r.hoy);
 
   const pendientes = [
+    // Nómina: desde el viernes, a quién falta pagarle la semana (solo quien lleva la nómina).
+    ...(avisoNomina
+      ? [{ titulo: "Nómina", icono: "billete" as const, detalle: `Semana ${avisoNomina.texto}: faltan ${avisoNomina.faltan.length} de ${avisoNomina.activos}`, cuenta: avisoNomina.faltan.length, href: "/nomina" }]
+      : []),
     { titulo: "Socios por recuperar", icono: "socios" as const, detalle: "Vencieron en los últimos 30 días", cuenta: r.vencidosRecientes.length, href: "/socios?filtro=vencida" },
     { titulo: "Productos por resurtir", icono: "inventario" as const, detalle: "Agotados o en su mínimo", cuenta: r.stockBajo.length, href: "/inventario?filtro=bajo" },
     ...(maquinas.cuentas.activos > 0

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useSyncExternalStore } from "react";
+import { escritorio } from "@/presentation/escritorio";
 
 /**
  * Conexión con el lector de huellas (U.are.U 4500) desde la ventana del
@@ -30,6 +31,30 @@ import { useEffect, useRef, useSyncExternalStore } from "react";
  * volvía a decir "sin foco"; solo se arreglaba al cambiar de ventana o cerrar
  * el programa. Este programa es el único que usa el lector en la computadora,
  * así que siempre se le dice al servicio que la página tiene el foco.
+ *
+ * CONEXIÓN "LISTA" PERO MUERTA. Si una ventana suelta el lector de golpe
+ * (se cierra el programa a la fuerza, se reinicia para actualizarse, se
+ * suspende la computadora), el servicio de HID se lo sigue apartando a esa
+ * ventana unos segundos: al pedir la captura contesta 0x80070057 ("ocupado").
+ * Cuando por fin la suelta, la conexión nueva a veces queda "lista" (HID dijo
+ * que sí y avisó que empezó a capturar) pero nunca le entrega el dedo: el
+ * lector prende la luz y no pasa nada (comprobado el 24/11/2026: 2 de 3 veces
+ * al reabrir la ventana justo después de cerrarla de golpe; salir al login no
+ * lo arreglaba porque se seguía usando la misma conexión). Desde aquí no hay
+ * forma de saberlo hasta que alguien pone el dedo, y lo único que lo arregla
+ * es reconectar. Por eso la conexión se renueva sola, sin que se note:
+ *   · unos segundos después de que el lector estuvo ocupado;
+ *   · si HID avisa que empezó o dejó de capturar sin que se lo pidiéramos;
+ *   · si pasa un minuto sin que llegue ningún dedo (red de seguridad: si algo
+ *     la dejó muerta, a lo mucho dura un minuto), lo que también cubre la
+ *     vuelta de la suspensión, y al volver a verse la ventana tras ocultarla.
+ *
+ * EL AGENTE DE HID SE REINICIA SI HACE FALTA (solo en el programa de
+ * escritorio, ver electron/agenteHid.cjs). Si el lector sigue "ocupado" más de
+ * 20 s (el agente puede tardar más de 5 minutos en soltar una ventana muerta),
+ * se cierra y se vuelve a abrir el agente: uno nuevo no recuerda ventanas
+ * muertas y suelta el lector en segundos. Y si el agente no contesta (se cerró
+ * o se cayó, y nadie lo vuelve a abrir hasta reiniciar la computadora), se abre.
  */
 
 export type EstadoLector =
@@ -39,6 +64,8 @@ export type EstadoLector =
   | "sin_programa"
   /** El servicio responde, pero no hay lector conectado. */
   | "sin_lector"
+  /** El servicio de HID aún le aparta el lector a una ventana que se cerró de golpe: lo suelta en segundos. */
+  | "ocupado"
   /** Esperando un dedo. */
   | "listo";
 
@@ -85,6 +112,24 @@ const ESPERA_MAXIMA_MS = 8000;
 const REINTENTO_MS = 5000;
 /** Lo más que se espera a que el servicio suelte el lector antes de cerrar la conexión. */
 const ESPERA_AL_SOLTAR_MS = 3000;
+/** Sin ningún dedo en este tiempo, la conexión se renueva por si quedó muerta (ver arriba). */
+const RENOVAR_SIN_ACTIVIDAD_MS = 60_000;
+/** Cada cuánto se revisa si toca renovar. */
+const REVISION_MS = 15_000;
+/** Después de que el lector estuvo ocupado, se renueva ya con HID limpio. */
+const RENOVAR_TRAS_OCUPADO_MS = 8000;
+/** Avisos de captura que llegan dentro de este tiempo después de pedirla son la respuesta a nuestro pedido. */
+const MARGEN_DE_PEDIDO_MS = 2000;
+/** Si el lector sigue ocupado este tiempo, se reinicia el agente de HID. */
+const REINICIAR_AGENTE_TRAS_OCUPADO_MS = 20_000;
+/** Si el agente no contesta este tiempo, se abre (por si se cerró o se cayó). */
+const ABRIR_AGENTE_TRAS_SIN_RESPUESTA_MS = 4000;
+/** Nunca dos reinicios del agente tan seguidos. */
+const ENTRE_REINICIOS_DE_AGENTE_MS = 120_000;
+/** Nunca dos renovaciones automáticas tan seguidas. */
+const ENTRE_RENOVACIONES_MS = 10_000;
+/** Lo que contesta HID ("parámetro inválido") mientras le aparta el lector a otra ventana. */
+const ERROR_OCUPADO = "0x80070057";
 
 /* ── Estado compartido (uno por ventana) ────────────────────────────── */
 
@@ -93,6 +138,22 @@ let capturando = false;
 let conexionEnCurso: Promise<void> | null = null;
 let reintento: ReturnType<typeof setTimeout> | null = null;
 let estado: EstadoLector = "conectando";
+/** Último dedo (o aviso de calidad) que llegó, o la última captura lograda. */
+let ultimaActividad = Date.now();
+/** Cuándo pedimos por última vez empezar o detener la captura. */
+let ultimoPedido = 0;
+/** El lector estuvo ocupado desde la última captura lograda. */
+let estuvoOcupado = false;
+let renovacion: ReturnType<typeof setTimeout> | null = null;
+let ultimaRenovacion = 0;
+let revisionIniciada = false;
+/** Desde cuándo está ocupado o sin respuesta (0 = no lo está). */
+let ocupadoDesde = 0;
+let sinRespuestaDesde = 0;
+let ultimoReinicioDeAgente = 0;
+let ultimaAperturaDeAgente = 0;
+/** Hasta cuándo el agente de HID se está abriendo de nuevo (no contesta, pero no es que falte instalarlo). */
+let agenteArrancandoHasta = 0;
 const oyentes = new Set<() => void>();
 interface Receptor {
   alLeer: { current: (imagenBase64: string) => void };
@@ -108,12 +169,17 @@ const AVISO_CALIDAD = "No se leyó bien el dedo. Ponlo otra vez, plano y centrad
 const AVISO_ERROR = "El lector no pudo leer el dedo. Ponlo otra vez.";
 
 function cambiar(nuevo: EstadoLector) {
+  // Mientras el agente que se acaba de reiniciar abre su puerto no contesta: no es que falte el
+  // programa (eso ofrecería instalarlo), sigue liberándose.
+  if (nuevo === "sin_programa" && Date.now() < agenteArrancandoHasta) nuevo = "ocupado";
   // El reintento se programa cada vez que algo falla, aunque ya estuviera en
   // "sin_programa". Antes solo se programaba al CAMBIAR a ese estado: si el
   // servicio tardaba más de 5 s en volver (al despertar la computadora), se
   // reintentaba una vez y ya no más, y se quedaba "no disponible" para siempre.
-  if (nuevo === "sin_programa") programarReintento();
+  if (nuevo === "sin_programa" || nuevo === "ocupado") programarReintento();
   if (estado === nuevo) return;
+  ocupadoDesde = nuevo === "ocupado" ? Date.now() : 0;
+  sinRespuestaDesde = nuevo === "sin_programa" ? Date.now() : 0;
   estado = nuevo;
   oyentes.forEach((avisar) => avisar());
 }
@@ -121,10 +187,42 @@ function cambiar(nuevo: EstadoLector) {
 /** Mientras alguna pantalla use el lector y el servicio no conteste, se reintenta solo. */
 function programarReintento() {
   if (reintento || receptores.length === 0) return;
-  reintento = setTimeout(() => {
+  reintento = setTimeout(async () => {
     reintento = null;
-    if (estado === "sin_programa" && receptores.length > 0) void reconectar(false);
+    if ((estado !== "sin_programa" && estado !== "ocupado") || receptores.length === 0) return;
+    await atenderAgente();
+    if ((estado === "sin_programa" || estado === "ocupado") && receptores.length > 0) void reconectar(false);
   }, REINTENTO_MS);
+}
+
+/**
+ * Si el lector lleva rato ocupado, reinicia el agente de HID; si el agente no
+ * contesta, lo abre. Solo en el programa de escritorio y con pausas largas
+ * entre intentos. Al terminar, el reintento normal vuelve a conectar (y la
+ * conexión olvida el puerto viejo, porque el agente nuevo abre otro).
+ */
+async function atenderAgente() {
+  const puente = escritorio()?.reiniciarAgenteLector;
+  if (!puente) return;
+  const ahora = Date.now();
+  try {
+    if (estado === "ocupado" && ocupadoDesde && ahora - ocupadoDesde > REINICIAR_AGENTE_TRAS_OCUPADO_MS && ahora - ultimoReinicioDeAgente > ENTRE_REINICIOS_DE_AGENTE_MS) {
+      ultimoReinicioDeAgente = ahora;
+      // Se marca ANTES de cerrarlo: al cerrarse, la conexión avisa del fallo enseguida.
+      agenteArrancandoHasta = Date.now() + 45_000;
+      const r = await puente({ forzar: true });
+      agenteArrancandoHasta = r.ok ? Date.now() + 15_000 : 0;
+    } else if (estado === "sin_programa" && sinRespuestaDesde && ahora - sinRespuestaDesde > ABRIR_AGENTE_TRAS_SIN_RESPUESTA_MS && ahora - ultimaAperturaDeAgente > ENTRE_REINICIOS_DE_AGENTE_MS / 2) {
+      ultimaAperturaDeAgente = ahora;
+      const r = await puente({ forzar: false });
+      if (r.ok && r.accion === "abierto") {
+        agenteArrancandoHasta = Date.now() + 15_000;
+        cambiar("ocupado");
+      }
+    }
+  } catch {
+    // Si no se pudo, se sigue reintentando como siempre.
+  }
 }
 
 function conLimite<T>(promesa: Promise<T>, ms: number): Promise<T> {
@@ -212,19 +310,30 @@ function conectar(): Promise<void> {
         });
         nuevo.on("SamplesAcquired", (e) => {
           if (lector !== nuevo) return;
+          ultimaActividad = Date.now();
           const imagen = imagenDeMuestra(e.samples);
           const receptor = receptorActual();
           if (imagen && receptor) receptor.alLeer.current(imagen);
         });
         // Si el lector sí vio el dedo pero no lo pudo usar, se dice (antes no pasaba nada y parecía descompuesto).
         nuevo.on("QualityReported", (e) => {
-          if (lector !== nuevo || typeof e.quality !== "number" || e.quality < PRIMERA_CALIDAD_MALA) return;
+          if (lector !== nuevo) return;
+          ultimaActividad = Date.now();
+          if (typeof e.quality !== "number" || e.quality < PRIMERA_CALIDAD_MALA) return;
           receptorActual()?.alAvisar.current?.(AVISO_CALIDAD);
         });
         nuevo.on("ErrorOccurred", () => {
           if (lector === nuevo) receptorActual()?.alAvisar.current?.(AVISO_ERROR);
         });
+        // HID empezó o dejó de capturar sin que se lo pidiéramos: le movió el lector a otra conexión
+        // (o se lo regresó a una ventana muerta). Se renueva la nuestra para quedarnos con él.
+        const avisoNoPedido = () => {
+          if (lector === nuevo && Date.now() - ultimoPedido > MARGEN_DE_PEDIDO_MS) programarRenovacion(3000);
+        };
+        nuevo.on("AcquisitionStarted", avisoNoPedido);
+        nuevo.on("AcquisitionStopped", avisoNoPedido);
       }
+      iniciarRevision();
       await iniciarCaptura();
     } catch {
       cambiar("sin_programa");
@@ -255,12 +364,23 @@ async function pedirCaptura(actual: LectorHid) {
     const lectores = await conLimite(actual.enumerateDevices(), ESPERA_MAXIMA_MS);
     if (lector !== actual) return;
     if (lectores.length === 0) return cambiar("sin_lector");
+    ultimoPedido = Date.now();
     await conLimite(actual.startAcquisition(FORMATO_PNG), ESPERA_MAXIMA_MS);
     if (lector !== actual) return;
     capturando = true;
+    ultimaActividad = Date.now();
     cambiar("listo");
-  } catch {
-    if (lector === actual) cambiar("sin_programa");
+    // Venía de estar ocupado por una ventana muerta: esta conexión pudo quedar muerta.
+    if (estuvoOcupado) {
+      estuvoOcupado = false;
+      programarRenovacion(RENOVAR_TRAS_OCUPADO_MS);
+    }
+  } catch (error) {
+    if (lector !== actual) return;
+    if (error instanceof Error && error.message === ERROR_OCUPADO) {
+      estuvoOcupado = true;
+      cambiar("ocupado");
+    } else cambiar("sin_programa");
   }
 }
 
@@ -278,6 +398,7 @@ async function soltar(viejo: LectorHid) {
   canal.onConnectionSucceed = () => canal.disconnect();
   canal.onConnectionFailed = () => canal.resetReconnectTimer();
   // Solo se detiene la captura si sigue conectada: pedirlo sin conexión la volvería a abrir.
+  ultimoPedido = Date.now();
   if (canal.isConnected()) await conLimite(viejo.stopAcquisition(), ESPERA_AL_SOLTAR_MS).catch(() => {});
   try {
     canal.disconnect();
@@ -335,6 +456,51 @@ function reconectar(mostrarConectando = true): Promise<void> {
   return reconexionEnCurso;
 }
 
+/**
+ * Renueva la conexión en silencio (la pantalla sigue diciendo "listo"). Tarda
+ * menos de un cuarto de segundo; un dedo que llegue justo en ese instante se
+ * pierde y se vuelve a poner, pero una conexión muerta ya no se queda así.
+ */
+function renovar() {
+  if (receptores.length === 0 || reconexionEnCurso || conexionEnCurso) return;
+  ultimaRenovacion = Date.now();
+  ultimaActividad = Date.now();
+  void reconectar(false);
+}
+
+/** Renueva dentro de `ms` (una sola vez aunque se pida varias, y nunca dos muy seguidas). */
+function programarRenovacion(ms: number) {
+  if (renovacion) return;
+  const espera = Math.max(ms, ultimaRenovacion + ENTRE_RENOVACIONES_MS - Date.now());
+  renovacion = setTimeout(() => {
+    renovacion = null;
+    if (estado === "listo") renovar();
+  }, espera);
+}
+
+/**
+ * Red de seguridad: si pasa un minuto sin ningún dedo, se renueva la conexión.
+ * Al volver de la suspensión los relojes siguen con la última actividad vieja,
+ * así que también se renueva entonces. Con la ventana oculta no se toca (nadie
+ * la está usando); al volver a verse, se renueva.
+ */
+function iniciarRevision() {
+  if (revisionIniciada) return;
+  revisionIniciada = true;
+  let oculta = false;
+  setInterval(() => {
+    if (document.visibilityState !== "visible") return;
+    if (estado === "listo" && Date.now() - ultimaActividad > RENOVAR_SIN_ACTIVIDAD_MS) renovar();
+  }, REVISION_MS);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") oculta = true;
+    else if (oculta) {
+      oculta = false;
+      if (estado === "listo") programarRenovacion(500);
+    }
+  });
+}
+
 function suscribir(avisar: () => void) {
   oyentes.add(avisar);
   return () => oyentes.delete(avisar);
@@ -381,5 +547,6 @@ export const TEXTO_ESTADO_LECTOR: Record<EstadoLector, string> = {
   conectando: "Conectando con el lector…",
   sin_programa: "Lector de huellas no disponible",
   sin_lector: "Conecta el lector de huellas",
+  ocupado: "El lector se está liberando…",
   listo: "Lector de huellas listo",
 };

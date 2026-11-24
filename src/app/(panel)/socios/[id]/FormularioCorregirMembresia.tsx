@@ -8,7 +8,7 @@ import { CampoDinero } from "@/presentation/components/formulario/campos";
 import { AvisosDelFormulario, Ayuda, Etiqueta, Formulario } from "@/presentation/components/formulario/Formulario";
 import { Selector } from "@/presentation/components/formulario/Selector";
 import { SelectorSegmentado } from "@/presentation/components/SelectorSegmentado";
-import { formatearDinero } from "@/shared/formato";
+import { precioOGratis } from "@/shared/formato";
 import { accionCorregirMembresia } from "../acciones";
 import { PieDelDialogo } from "./PieDelDialogo";
 
@@ -61,7 +61,7 @@ export function FormularioCorregirMembresia({
           requerido
           valor={planId}
           alCambiar={setPlanId}
-          opciones={planes.map((p) => ({ valor: p.id, texto: `${p.nombre} · ${p.duracion} · ${formatearDinero(p.precio)}` }))}
+          opciones={planes.map((p) => ({ valor: p.id, texto: `${p.nombre} · ${p.duracion} · ${precioOGratis(p.precio)}` }))}
         />
       </div>
       <div>
@@ -74,7 +74,7 @@ export function FormularioCorregirMembresia({
           valorInicial={estado.valores?.monto ?? (planId === planActual ? String(montoActual) : String(plan?.precio ?? ""))}
           atributos={{ "data-que": "El monto", "data-falta": "Escribe cuánto se cobró." }}
         />
-        <Ayuda para="monto-correcto">Precio del plan: {plan ? formatearDinero(plan.precio) : "—"}.</Ayuda>
+        <Ayuda para="monto-correcto">Precio del plan: {plan ? precioOGratis(plan.precio) : "—"}.</Ayuda>
       </div>
       <fieldset>
         <legend className="etiqueta">Método de pago</legend>

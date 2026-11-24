@@ -5,16 +5,19 @@ import { Icono } from "@/presentation/components/Icono";
 import { MenuMas, type OpcionMenu } from "@/presentation/components/MenuMas";
 import { FormularioBaja } from "./FormularioBaja";
 import { FormularioCorregirMembresia } from "./FormularioCorregirMembresia";
+import { FormularioDevolucion } from "./FormularioDevolucion";
 import { FormularioEliminarSocio } from "./FormularioEliminarSocio";
 import { FormularioUnir } from "./FormularioUnir";
 
-type Vista = "corregir" | "unir" | "baja" | "eliminar";
+type Vista = "corregir" | "devolver" | "unir" | "baja" | "eliminar";
 
 interface Props {
   socioId: string;
   nombre: string;
   /** Su membresía más reciente, si se puede corregir y quien usa el programa tiene permiso. */
   corregir?: Omit<React.ComponentProps<typeof FormularioCorregirMembresia>, "socioId" | "alCancelar"> | null;
+  /** Devolver dinero de su membresía (cobrada otro día, aún vigente). */
+  devolver?: Omit<React.ComponentProps<typeof FormularioDevolucion>, "socioId" | "alCancelar"> | null;
   /** Dar de baja (dejar en espera). */
   baja?: { tieneMembresiaVigente: boolean } | null;
   /** Registros con su mismo nombre. No va en el menú: se abre solo desde el aviso de repetidos. */
@@ -30,7 +33,7 @@ interface Props {
  * una se abre en su ventana y se confirma ahí. Unir registros no va en el
  * menú: aparece solo como aviso cuando hay un repetido.
  */
-export function AccionesDelSocio({ socioId, nombre, corregir, baja, unir, eliminar, abrirUnir = false }: Props) {
+export function AccionesDelSocio({ socioId, nombre, corregir, devolver, baja, unir, eliminar, abrirUnir = false }: Props) {
   const [vista, setVista] = useState<Vista | null>(null);
   // Cada vez que se abre una ventana, su formulario empieza limpio.
   const [vez, setVez] = useState(0);
@@ -45,9 +48,9 @@ export function AccionesDelSocio({ socioId, nombre, corregir, baja, unir, elimin
 
   // Si lo que se iba a hacer ya no aplica (por ejemplo, ya quedó de baja), la ventana se cierra.
   useEffect(() => {
-    const datos = { corregir, unir, baja, eliminar };
+    const datos = { corregir, devolver, unir, baja, eliminar };
     if (vista && !datos[vista]) dialogo.current?.close();
-  }, [vista, corregir, unir, baja, eliminar]);
+  }, [vista, corregir, devolver, unir, baja, eliminar]);
 
   // Desde la lista de socios (?unir=1): se abre sola una vez y se limpia la dirección.
   const abrioSola = useRef(false);
@@ -74,6 +77,7 @@ export function AccionesDelSocio({ socioId, nombre, corregir, baja, unir, elimin
 
   const opciones: OpcionMenu[] = [
     ...(corregir ? [{ texto: "Corregir membresía", icono: "editar" as const, alElegir: () => abrir("corregir") }] : []),
+    ...(devolver ? [{ texto: "Devolución", icono: "billete" as const, alElegir: () => abrir("devolver") }] : []),
     ...(baja ? [{ texto: "Dar de baja", icono: "pausa" as const, alElegir: () => abrir("baja") }] : []),
     ...(eliminar ? [{ texto: "Eliminar para siempre", icono: "basura" as const, peligro: true, alElegir: () => abrir("eliminar") }] : []),
   ];
@@ -81,6 +85,7 @@ export function AccionesDelSocio({ socioId, nombre, corregir, baja, unir, elimin
 
   const titulos: Record<Vista, string> = {
     corregir: "Corregir membresía",
+    devolver: "Devolución",
     unir: "Unir registros repetidos",
     baja: `¿Dar de baja a ${nombre}?`,
     eliminar: `¿Eliminar a ${nombre} para siempre?`,
@@ -110,6 +115,7 @@ export function AccionesDelSocio({ socioId, nombre, corregir, baja, unir, elimin
               </button>
             </header>
             {vista === "corregir" && corregir && <FormularioCorregirMembresia key={vez} socioId={socioId} alCancelar={cerrar} {...corregir} />}
+            {vista === "devolver" && devolver && <FormularioDevolucion key={vez} socioId={socioId} alCancelar={cerrar} {...devolver} />}
             {vista === "unir" && unir && <FormularioUnir key={vez} socioId={socioId} nombre={nombre} sugeridos={unir.sugeridos} alCancelar={cerrar} />}
             {vista === "baja" && baja && <FormularioBaja key={vez} socioId={socioId} tieneMembresiaVigente={baja.tieneMembresiaVigente} alCancelar={cerrar} />}
             {vista === "eliminar" && eliminar && <FormularioEliminarSocio key={vez} socioId={socioId} tienePagos={eliminar.tienePagos} alCancelar={cerrar} />}

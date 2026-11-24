@@ -13,6 +13,12 @@ export interface PuenteEscritorio {
   abrirWhatsApp(): Promise<void>;
   /** Descarga de la página oficial de HID el programa del lector de huellas y abre su instalador. */
   instalarLector(): Promise<{ ok: true } | { ok: false; error: string }>;
+  /**
+   * Abre el agente del lector de HID si no está corriendo; con `forzar`, lo
+   * cierra y lo vuelve a abrir (suelta un lector que se quedó apartado para una
+   * ventana que ya no existe). Ver electron/agenteHid.cjs.
+   */
+  reiniciarAgenteLector?(opciones?: { forzar?: boolean }): Promise<{ ok: true; accion: string } | { ok: false; error: string }>;
   /** Versión nueva ya descargada y lista para instalar, si la hay. */
   actualizacionLista?(): Promise<{ version: string } | null>;
   /** Avisa cuando termina de descargarse una versión nueva. Devuelve cómo dejar de escuchar. */

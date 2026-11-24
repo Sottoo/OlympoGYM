@@ -2,7 +2,7 @@ import { tienePermiso } from "@/infrastructure/auth/autenticacion";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { nombreDelMetodo, type Pago } from "@/domain/entities/Pago";
+import { type Devolucion, nombreDelMetodo, type Pago } from "@/domain/entities/Pago";
 import { fechaDePago, type Suscripcion } from "@/domain/entities/Suscripcion";
 import { describirDuracion, esPlanDeVisita } from "@/domain/entities/Plan";
 import { nombreCompleto } from "@/domain/entities/Socio";
@@ -18,7 +18,7 @@ import { Panel } from "@/presentation/components/Panel";
 import { MensajeExito } from "@/presentation/components/Mensajes";
 import { Pasaporte } from "@/presentation/components/Pasaporte";
 import { EtiquetaCifra } from "@/presentation/components/Marcador";
-import { describirDiasRestantes, fechaLocal, horaLocal, formatearDinero, formatearFecha, formatearFechaLarga, formatearTelefono, plural } from "@/shared/formato";
+import { describirDiasRestantes, fechaLocal, horaLocal, formatearDinero, formatearFecha, formatearFechaLarga, formatearTelefono, plural, precioOGratis } from "@/shared/formato";
 import { accionReactivarSocio } from "../acciones";
 import { FormularioAsignarPlan } from "./FormularioAsignarPlan";
 import { CobrarVisitaDeHoy } from "./CobrarVisitaDeHoy";
@@ -41,6 +41,7 @@ const AVISOS: Record<string, string> = {
   baja: "Listo: quedó en espera (dado de baja).",
   reactivado: "Socio reactivado. Si regresa a entrenar, asígnale un plan.",
   corregido: "Membresía corregida: el plan, el vencimiento y el pago quedaron con los datos correctos.",
+  devuelto: "Devolución registrada: salió de la caja de hoy y la membresía terminó.",
   unido: "Registros unidos: todo el historial quedó en este socio y el registro repetido se borró.",
 };
 
@@ -74,21 +75,29 @@ export default async function PaginaSocio({ params, searchParams }: Props) {
   const visita = planes.filter((p) => p.activo && esPlanDeVisita(p)).sort((a, b) => a.precio - b.precio)[0];
   const planesDeMembresia = planes.filter((p) => !esPlanDeVisita(p)).map((p) => ({ id: p.id, nombre: p.nombre, precio: p.precio, duracion: describirDuracion(p) }));
   const hoy = new Intl.DateTimeFormat("en-CA", { timeZone: entorno.zonaHoraria }).format(new Date());
-  const { socio, fotoUrl, edad, cumpleHoy, membresia, planActual, deVisita, suscripciones, pagos } = detalle;
+  const { socio, fotoUrl, edad, cumpleHoy, membresia, planActual, deVisita, suscripciones, pagos, devoluciones } = detalle;
   // Una visita pagada hoy no es membresía: se le ofrece asignar plan, no "renovar".
   const vigente = !deVisita && (membresia.estado === "vigente" || membresia.estado === "por_vencer");
-  const totalPagado = pagos.reduce((t, p) => t + p.monto, 0);
-  // La membresía que se puede corregir: la más reciente (sin contar visitas), con su pago.
+  const totalPagado = pagos.reduce((t, p) => t + p.monto, 0) - devoluciones.reduce((t, d) => t + d.monto, 0);
   const ultimaMembresia = suscripciones.find((s) => !s.esVisita);
-  const corregible = ultimaMembresia;
+  // Corregir o cancelar: solo la más reciente y solo el mismo día que se cobró (el corte de un día
+  // pasado ya se contó). Desde el día siguiente, si hay que regresar dinero, es una devolución.
+  const cobradaHoy = ultimaMembresia ? fechaLocal(ultimaMembresia.creadoEn, entorno.zonaHoraria) === hoy : false;
+  const corregible = cobradaHoy ? ultimaMembresia : undefined;
   const pagoCorregible = corregible ? pagos.find((p) => p.suscripcionId === corregible.id) : undefined;
+  // Devolución: la más reciente, vigente o ya pagada para después, cobrada otro día, con dinero por devolver.
+  const disponibleParaDevolver = ultimaMembresia
+    ? Math.round(
+        (pagos.filter((p) => p.suscripcionId === ultimaMembresia.id).reduce((t, p) => t + p.monto, 0) -
+          devoluciones.filter((d) => d.suscripcionId === ultimaMembresia.id).reduce((t, d) => t + d.monto, 0)) *
+          100,
+      ) / 100
+    : 0;
+  const devolvible = ultimaMembresia && !cobradaHoy && ultimaMembresia.fechaFin >= hoy && disponibleParaDevolver > 0 ? ultimaMembresia : undefined;
   // Una membresía a la vez: mientras la que tiene (o la siguiente que ya pagó) no llegue a su último día, no se cobra otra.
   const pagadaHasta = ultimaMembresia && ultimaMembresia.fechaFin > hoy ? ultimaMembresia : undefined;
-  // Cobrada por error: la más reciente se puede cancelar si se registró hoy o aún no empieza (misma regla que CancelarMembresia).
-  const cancelable =
-    corregible && corrigeCobros && socio.activo && (corregible.fechaInicio >= hoy || fechaLocal(corregible.creadoEn, entorno.zonaHoraria) === hoy)
-      ? corregible.id
-      : undefined;
+  // Cobrada por error: se cancela solo el mismo día que se cobró (misma regla que CancelarMembresia).
+  const cancelable = corregible && corrigeCobros && socio.activo ? corregible.id : undefined;
   const nombre = nombreCompleto(socio);
   const estado: { texto: string; clase: string } = !socio.activo
     ? { texto: "De baja", clase: "bg-gris!" }
@@ -221,7 +230,18 @@ export default async function PaginaSocio({ params, searchParams }: Props) {
                   }
                 : null
             }
-            baja={socio.activo && gestionaBajas ? { tieneMembresiaVigente: vigente } : null}
+            baja={socio.activo && gestionaBajas ? { tieneMembresiaVigente: vigente || Boolean(pagadaHasta) } : null}
+            devolver={
+              devolvible && corrigeCobros
+                ? {
+                    suscripcionId: devolvible.id,
+                    plan: devolvible.planNombre,
+                    periodo: `${formatearFecha(devolvible.fechaInicio)} – ${formatearFecha(fechaDePago(devolvible))}`,
+                    maximo: disponibleParaDevolver,
+                    metodoSugerido: pagos.find((p) => p.suscripcionId === devolvible.id)?.metodo ?? "efectivo",
+                  }
+                : null
+            }
             abrirUnir={abrirUnir === "1"}
             unir={repetidos.length > 0 && eliminaSocios ? { sugeridos: repetidos.map((r) => ({ id: r.id, texto: `${r.nombre} · ${r.numero}${r.activo ? "" : " · en espera"}` })) } : null}
             eliminar={eliminaSocios ? { tienePagos: pagos.length > 0 } : null}
@@ -339,7 +359,7 @@ export default async function PaginaSocio({ params, searchParams }: Props) {
             />
           </Panel>
 
-          <HistorialDeCobros socioId={socio.id} suscripciones={suscripciones} pagos={pagos} hoy={hoy} cancelable={cancelable} />
+          <HistorialDeCobros socioId={socio.id} suscripciones={suscripciones} pagos={pagos} devoluciones={devoluciones} hoy={hoy} cancelable={cancelable} />
 
           {socio.notas && (
             <Panel titulo="Notas">
@@ -378,12 +398,14 @@ function HistorialDeCobros({
   socioId,
   suscripciones,
   pagos,
+  devoluciones,
   hoy,
   cancelable,
 }: {
   socioId: string;
   suscripciones: Suscripcion[];
   pagos: Pago[];
+  devoluciones: Devolucion[];
   hoy: string;
   /** La membresía que se puede cancelar por cobrarse por error, si la hay. */
   cancelable?: string;
@@ -394,8 +416,30 @@ function HistorialDeCobros({
       .filter((p) => !p.suscripcionId || !suscripciones.some((s) => s.id === p.suscripcionId))
       .map((p) => ({ id: p.id, fecha: p.fecha, suscripcion: null, pagos: [p] })),
   ].sort((a, b) => b.fecha.localeCompare(a.fecha));
+  // Las devoluciones van como su propio renglón, en la fecha en que se hicieron.
+  const filas = [
+    ...renglones.map((r) => ({ ...r, devolucion: null as Devolucion | null })),
+    ...devoluciones.map((d) => ({ id: d.id, fecha: d.fecha, suscripcion: null, pagos: [] as Pago[], devolucion: d })),
+  ].sort((a, b) => b.fecha.localeCompare(a.fecha));
 
-  const renglon = ({ id, suscripcion: s, pagos: ps }: (typeof renglones)[number]) => {
+  const renglon = ({ id, suscripcion: s, pagos: ps, devolucion }: (typeof filas)[number]) => {
+    if (devolucion) {
+      const de = suscripciones.find((x) => x.id === devolucion.suscripcionId)?.planNombre;
+      return (
+        <li key={id} className="flex items-start justify-between gap-3 border-b border-dashed border-linea py-2.5 last:border-0">
+          <span className="min-w-0">
+            <span className="block text-[0.9rem] font-semibold text-rojo">Devolución{de ? ` · ${de}` : ""}</span>
+            <span className="block text-[0.76rem] text-gris tabular-nums">
+              {formatearFecha(devolucion.fecha)} · {devolucion.motivo}
+            </span>
+          </span>
+          <span className="shrink-0 text-right">
+            <span className="cifra block text-[1.2rem] leading-tight text-rojo">−{formatearDinero(devolucion.monto)}</span>
+            <span className="block text-[0.72rem] text-gris">{nombreDelMetodo(devolucion.metodo)}</span>
+          </span>
+        </li>
+      );
+    }
     const monto = ps.reduce((t, p) => t + p.monto, 0);
     const cobro = ps[0];
     const estado = s && !s.esVisita ? (s.fechaInicio > hoy ? "Próxima" : s.fechaFin >= hoy ? "Vigente" : null) : null;
@@ -417,7 +461,7 @@ function HistorialDeCobros({
           </span>
         </span>
         <span className="shrink-0 text-right">
-          <span className="cifra block text-[1.2rem] leading-tight">{cobro ? formatearDinero(monto) : "—"}</span>
+          <span className="cifra block text-[1.2rem] leading-tight">{cobro ? precioOGratis(monto) : "—"}</span>
           <span className="block text-[0.72rem] text-gris">{cobro ? nombreDelMetodo(cobro.metodo) : "Sin pago"}</span>
           {s && s.id === cancelable && (
             <BotonCancelarMembresia
@@ -425,7 +469,7 @@ function HistorialDeCobros({
               suscripcionId={s.id}
               plan={s.planNombre}
               periodo={periodo}
-              importe={cobro ? formatearDinero(monto) : null}
+              importe={cobro ? precioOGratis(monto) : null}
               cobradoEl={cobro ? formatearFecha(cobro.fecha) : null}
             />
           )}
@@ -434,14 +478,14 @@ function HistorialDeCobros({
     );
   };
 
-  const resto = renglones.slice(RENGLONES_VISIBLES);
+  const resto = filas.slice(RENGLONES_VISIBLES);
   return (
     <Panel titulo="Membresías y pagos">
-      {renglones.length === 0 ? (
+      {filas.length === 0 ? (
         <p className="text-[0.88rem] text-gris">Todavía no tiene membresías ni pagos.</p>
       ) : (
         <>
-          <ul>{renglones.slice(0, RENGLONES_VISIBLES).map(renglon)}</ul>
+          <ul>{filas.slice(0, RENGLONES_VISIBLES).map(renglon)}</ul>
           {resto.length > 0 && (
             <details className="group/mas">
               <summary className="mt-2 w-fit cursor-pointer list-none text-[0.8rem] font-bold text-tinta-suave hover:text-tinta [&::-webkit-details-marker]:hidden">

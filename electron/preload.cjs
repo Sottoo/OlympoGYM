@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld("olimpo", {
   abrirCarpeta: (ruta) => ipcRenderer.invoke("olimpo:abrir-carpeta", ruta),
   abrirWhatsApp: () => ipcRenderer.invoke("olimpo:abrir-whatsapp"),
   instalarLector: () => ipcRenderer.invoke("olimpo:instalar-lector"),
+  reiniciarAgenteLector: (opciones) => ipcRenderer.invoke("olimpo:reiniciar-agente-lector", opciones),
   actualizacionLista: () => ipcRenderer.invoke("olimpo:actualizacion-lista"),
   alHaberActualizacion: (manejador) => {
     const escucha = (_evento, info) => manejador(info);

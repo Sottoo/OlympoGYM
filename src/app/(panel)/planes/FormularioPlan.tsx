@@ -116,9 +116,10 @@ export function FormularioPlan({ plan, vendido = false }: { plan?: Plan; vendido
           nombre="precio"
           requerido
           valorInicial={v.precio}
-          atributos={{ "data-regla": "precio", "data-que": "El precio", "data-falta": "Escribe el precio del plan." }}
+          // La visita siempre cuesta; una membresía puede ser de $0 (cortesía) y en pantalla dice «Gratis».
+          atributos={{ "data-regla": tipo === "visita" ? "precio" : "dinero", "data-que": "El precio", "data-falta": "Escribe el precio del plan." }}
         />
-        <Ayuda para="precio" />
+        <Ayuda para="precio">{tipo === "visita" ? "La visita siempre tiene costo." : "Pon 0 si es una membresía gratis (cortesía)."}</Ayuda>
       </div>
 
       {tipo === "membresia" && !fijo && (

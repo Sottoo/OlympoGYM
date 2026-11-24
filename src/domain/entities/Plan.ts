@@ -38,7 +38,11 @@ export function validarNuevoPlan(datos: DatosNuevoPlan): DatosNuevoPlan {
   if (descripcion && descripcion.length > LIMITES.descripcionPlan) {
     throw new ErrorDeDominio(`La descripción puede tener hasta ${LIMITES.descripcionPlan} caracteres.`, "descripcion");
   }
-  const errorPrecio = revisarDinero(datos.precio, { minExclusivo: true, que: "El precio" });
+  // Una membresía puede ser gratis ($0, por ejemplo una cortesía): en pantalla dice «Gratis».
+  // La visita no: es lo que se cobra a quien llega sin membresía, y una visita gratis la tomaba
+  // el mostrador para todos (pasó con una «visita para conocer» de $0.01).
+  const visita = esPlanDeVisita(datos);
+  const errorPrecio = revisarDinero(datos.precio, visita ? { minExclusivo: true, que: "El precio de la visita" } : { que: "El precio" });
   if (errorPrecio) throw new ErrorDeDominio(errorPrecio, "precio");
   if (!UNIDADES.includes(datos.unidad)) throw new ErrorDeDominio("La unidad de duración no es válida.", "unidad");
   const errorDuracion = revisarEntero(datos.duracion, { min: 1, max: DURACION_MAXIMA[datos.unidad], que: "La duración" });

@@ -162,6 +162,18 @@ function describir(r: RegistroBitacora): string {
       if (r.operacion === "eliminacion") return `Borró la huella${de} (${dedo})`;
       return `Volvió a registrar la huella${de} (${dedo})`;
     }
+    case "empleados":
+      if (r.operacion === "alta") return `Dio de alta al empleado ${texto(d.nombre)}`;
+      if (r.antes?.activo !== r.despues?.activo) return r.despues?.activo ? `Reactivó al empleado ${texto(d.nombre)}` : `Desactivó al empleado ${texto(d.nombre)}`;
+      return `Cambió los datos del empleado ${texto(d.nombre)}`;
+    case "pagos_nomina":
+      return r.operacion === "alta"
+        ? `Registró un pago de nómina de ${dinero(d.monto)} ${conMetodo(texto(d.metodo))} (semana del ${formatearFecha(texto(d.semana))})`
+        : r.operacion === "eliminacion" ? `Anuló un pago de nómina de ${dinero(d.monto)}` : `Modificó un pago de nómina de ${dinero(d.monto)}`;
+    case "devoluciones":
+      return r.operacion === "alta"
+        ? `Registró una devolución de ${dinero(d.monto)} ${conMetodo(texto(d.metodo))}: ${texto(d.motivo)}`
+        : r.operacion === "eliminacion" ? `Borró una devolución de ${dinero(d.monto)}` : `Modificó una devolución de ${dinero(d.monto)}`;
     case "fondos_de_caja":
       return r.operacion === "alta"
         ? `Anotó el fondo de caja del ${texto(d.fecha)}: ${dinero(d.monto)}`

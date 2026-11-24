@@ -12,6 +12,8 @@ import { DefinicionesDeHilo } from "@/presentation/components/pictogramas/Pictog
 import { accionCerrarSesion } from "./acciones";
 import { programarRespaldoDiario } from "@/infrastructure/respaldo/respaldo";
 import { PERMISO_DE_SECCION, puede, ROLES } from "@/domain/shared/permisos";
+import { baseDeDatos } from "@/infrastructure/sqlite/baseDeDatos";
+import { estadoDelReloj, explicarReloj } from "@/infrastructure/reloj/horaReal";
 
 /**
  * El marco del panel: a la izquierda el riel negro (la playera, con el logo
@@ -25,6 +27,8 @@ export default async function LayoutPanel({ children }: { children: React.ReactN
   // El respaldo del día se hace por detrás, sin hacer esperar a nadie.
   programarRespaldoDiario();
   // El menú no muestra lo que el perfil no puede abrir.
+  // Si la fecha de la computadora está mal, no se guarda nada del gimnasio: se avisa arriba de todo.
+  const reloj = estadoDelReloj(baseDeDatos());
   const ocultas = Object.entries(PERMISO_DE_SECCION)
     .filter(([, permiso]) => permiso && !puede(personal.rol, permiso, permisosExtraDeRecepcion()))
     .map(([ruta]) => ruta);
@@ -61,6 +65,12 @@ export default async function LayoutPanel({ children }: { children: React.ReactN
       </aside>
 
       <main className="min-w-0 px-9 pb-12 pt-8">
+        {!reloj.ok && (
+          <div role="alert" className="mb-6 flex items-start gap-3 rounded-[12px] border-[1.5px] border-dashed border-rojo bg-rojo/10 px-5 py-4 text-[0.92rem]">
+            <Icono nombre="alerta" className="mt-0.5 size-5 shrink-0 text-rojo" />
+            <p className="font-semibold text-tinta">{explicarReloj(reloj)}</p>
+          </div>
+        )}
         <div className="contenido">{children}</div>
         <Suspense>
           <CerrarVentanasAlNavegar />

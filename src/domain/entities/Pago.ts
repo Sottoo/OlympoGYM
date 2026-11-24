@@ -34,6 +34,43 @@ export interface PagoDelDia extends Pago {
   planNombre: string | null;
 }
 
+/**
+ * Dinero que se le regresa a un socio. Desde el día siguiente a un cobro ya
+ * no se borra ni se corrige (el corte de ese día ya se contó): la devolución
+ * se registra el día en que se hace, sale de la caja de ese día, lleva su
+ * motivo y termina la membresía. Los cortes pasados nunca cambian.
+ */
+export interface Devolucion {
+  id: string;
+  socioId: string;
+  suscripcionId: string | null;
+  monto: number;
+  metodo: MetodoPago;
+  fecha: FechaISO;
+  motivo: string;
+  creadoEn: string;
+}
+
+export type DatosNuevaDevolucion = Omit<Devolucion, "id" | "creadoEn">;
+
+/** Una devolución del día, con a quién y de qué plan (para el corte de caja). */
+export interface DevolucionDelDia extends Devolucion {
+  socioNombre: string;
+  planNombre: string | null;
+}
+
+/** Revisa una devolución: hasta lo que pagó por esa membresía (menos lo ya devuelto), con método y motivo. */
+export function validarDevolucion(datos: DatosNuevaDevolucion, maximo: number): DatosNuevaDevolucion {
+  const errorMonto = revisarDinero(datos.monto, { minExclusivo: true, que: "Lo que se devuelve" });
+  if (errorMonto) throw new ErrorDeDominio(errorMonto, "monto");
+  if (datos.monto > maximo + 0.001) throw new ErrorDeDominio(`No se puede devolver más de lo que pagó por esta membresía (${maximo.toFixed(2).replace(/\.00$/, "")} pesos).`, "monto");
+  if (!Object.hasOwn(METODOS_PAGO, datos.metodo)) throw new ErrorDeDominio("Elige cómo se le devuelve el dinero.", "metodoPago");
+  const motivo = datos.motivo.trim().replace(/\s+/g, " ");
+  if (motivo.length < 3) throw new ErrorDeDominio("Escribe el motivo de la devolución.", "motivo");
+  if (motivo.length > LIMITES.nota) throw new ErrorDeDominio(`El motivo puede tener hasta ${LIMITES.nota} caracteres.`, "motivo");
+  return { ...datos, monto: Math.round(datos.monto * 100) / 100, motivo };
+}
+
 /** Hasta cuántos días atrás se puede registrar un cobro que se olvidó anotar. */
 export const DIAS_PARA_COBRO_ATRASADO = 31;
 

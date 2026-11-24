@@ -96,6 +96,10 @@ export class MotorFingerJet implements MotorDeHuellas {
   }
 
   combinar(muestras: Uint8Array[]): Uint8Array {
+    if (!muestras.every(esPlantillaValida)) {
+      anotarEnRegistroDelLector("registro: llegó un toque con la plantilla dañada; no se le pasó al motor");
+      throw new ErrorDeDominio("Uno de los toques no sirvió para registrar la huella. Vuelve a empezar.");
+    }
     const f = funciones();
     if (f.iniciarRegistro(FORMATO_ANSI_378) !== 0) throw new ErrorDeDominio("No se pudo preparar el registro de la huella. Intenta de nuevo.");
     try {
@@ -139,9 +143,49 @@ export class MotorFingerJet implements MotorDeHuellas {
 
   /** Qué tan distintas son (0 = idénticas), o null si el motor no pudo compararlas. */
   private puntaje(a: Uint8Array, b: Uint8Array): number | null {
+    // Una plantilla dañada nunca llega al motor: dpfj no la revisa y tumba el programa (ver esPlantillaValida).
+    if (!esPlantillaValida(a) || !esPlantillaValida(b)) return null;
     const puntaje = [PROBABILIDAD_UNO];
     const r = funciones().comparar(FORMATO_ANSI_378, a, a.length, 0, FORMATO_ANSI_378, b, b.length, 0, puntaje);
     return r === 0 ? puntaje[0] : null;
+  }
+}
+
+/**
+ * La plantilla está completa y bien formada (ANSI INCITS 378-2004), así que se
+ * le puede pasar al motor sin peligro.
+ *
+ * dpfj.dll NO revisa las plantillas que recibe: si el número de minucias de
+ * una vista dice más de las que de verdad trae, lee fuera de la plantilla y
+ * tumba el programa entero (comprobado: cambiar ese solo byte de una plantilla
+ * real lo tiró 28 de cada 120 veces). Una plantilla así podría venir de la
+ * pantalla durante el registro (los toques anteriores van y vienen) o de una
+ * huella guardada que se dañó. Por eso se recorre completa: encabezado, largo
+ * total y cada vista con sus minucias y su bloque extendido deben cuadrar
+ * exactamente con el tamaño.
+ */
+export function esPlantillaValida(p: Uint8Array): boolean {
+  try {
+    if (p.length < 32 || p.length > TAMANO_MAXIMO_PLANTILLA) return false;
+    const d = Buffer.from(p.buffer, p.byteOffset, p.byteLength);
+    if (d.toString("latin1", 0, 8) !== "FMR\u0000 20\u0000") return false;
+    // Largo del registro: 2 bytes; si vale 0, va en los 4 siguientes y el encabezado crece 4 bytes.
+    const corto = d.readUInt16BE(8);
+    const largo = corto !== 0 ? corto : d.readUInt32BE(10);
+    const encabezado = corto !== 0 ? 26 : 30;
+    if (largo !== d.length) return false;
+    const vistas = d[encabezado - 2];
+    if (vistas < 1 || vistas > 16) return false;
+    let pos = encabezado;
+    for (let v = 0; v < vistas; v++) {
+      if (pos + 4 > d.length) return false;
+      pos += 4 + 6 * d[pos + 3];
+      if (pos + 2 > d.length) return false;
+      pos += 2 + d.readUInt16BE(pos);
+    }
+    return pos === d.length;
+  } catch {
+    return false;
   }
 }
 

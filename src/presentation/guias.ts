@@ -80,7 +80,9 @@ export const GUIAS = {
       "Para renovar o asignar plan, elige el plan en «Renovar membresía», el método de pago y cobra.",
       "Si el cobro fue otro día y se olvidó anotarlo, marca «Se cobró otro día» y pon la fecha real.",
       "Para registrar su huella, sigue los pasos del panel «Huella» con el socio presente.",
-      "Lo poco frecuente está en «Más», junto a «Editar datos»: corregir la membresía si se cobró el plan equivocado, dar de baja o eliminar.",
+      "Lo poco frecuente está en «Más», junto a «Editar datos»: corregir la membresía, devolución, dar de baja o eliminar.",
+      "Un cobro equivocado se corrige o se cancela solo el mismo día. Desde el día siguiente, si hay que regresar dinero, es una «Devolución»: sale de la caja de ese día, con su motivo, y la membresía termina. Los cortes de días pasados nunca cambian.",
+      "No se puede dar de baja a alguien con membresía vigente: sus días siguen corriendo aunque no venga. Se da de baja cuando vence.",
     ],
     registro: "Cada pago queda con fecha, monto, método y quién cobró; cada corrección, en la bitácora.",
     reglas: [
@@ -231,6 +233,25 @@ export const GUIAS = {
       "Para recuperar información, usa «Restaurar» con el respaldo que corresponda.",
     ],
     registro: "Cada respaldo queda con fecha, tipo y tamaño. Antes de restaurar se guarda una copia de lo actual.",
+  },
+  nomina: {
+    clave: "P-15",
+    titulo: "Nómina",
+    que: "Lo que se les paga a los empleados del gimnasio cada semana (de lunes a viernes), para llevar el control.",
+    quien: "Administración (o quien tenga el permiso de nómina).",
+    pasos: [
+      "En «Empleados», da de alta a cada uno con su nombre, puesto y sueldo semanal (se propone al pagarle).",
+      "Desde el viernes aparece el aviso «Nómina» en Hoy y aquí, con a quién falta pagarle esa semana.",
+      "En «Pagar nómina», elige al empleado y la semana, revisa la cantidad y si fue en efectivo o transferencia.",
+      "Si alguien ya no trabaja ahí, desactívalo: sus pagos se conservan y deja de aparecer en el aviso.",
+    ],
+    registro: "Cada pago queda con la semana, la cantidad, cómo se pagó y el día; también en la bitácora.",
+    reglas: [
+      "Un pago por empleado y semana: no se le puede pagar dos veces la misma semana.",
+      "No se pagan semanas que todavía no empiezan.",
+      "Lo pagado en efectivo sale del «Efectivo en caja» del día en que se paga y aparece en las salidas del corte.",
+      "Un pago equivocado se anula solo el mismo día; los cortes de días pasados no cambian.",
+    ],
   },
 } satisfies Record<string, Guia>;
 

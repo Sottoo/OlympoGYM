@@ -1,4 +1,4 @@
-import { type DatosNuevoPlan, type Plan, validarNuevoPlan } from "@/domain/entities/Plan";
+import { type DatosNuevoPlan, esPlanDeVisita, type Plan, validarNuevoPlan } from "@/domain/entities/Plan";
 import type { PlanRepository } from "@/domain/repositories/PlanRepository";
 import { ErrorDeDominio, NoEncontrado } from "@/domain/shared/ErrorDeDominio";
 import { limpiarEspacios } from "@/domain/shared/reglas";
@@ -11,6 +11,22 @@ export class ListarPlanes {
   }
 }
 
+/**
+ * Solo puede haber UNA visita activa: es la que cobra el mostrador a quien
+ * llega sin membresía. Con dos, el mostrador tenía que adivinar cuál (tomaba la
+ * más barata y cobraba $0.01 a todos).
+ */
+async function asegurarUnaVisita(planes: PlanRepository, plan: Pick<Plan, "duracion" | "unidad">, exceptoId?: string) {
+  if (!esPlanDeVisita(plan)) return;
+  const otra = (await planes.listar({ soloActivos: true })).find((p) => p.activo && p.id !== exceptoId && esPlanDeVisita(p));
+  if (otra) {
+    throw new ErrorDeDominio(
+      `Ya hay una visita activa («${otra.nombre}»). Solo puede haber una, porque es la que cobra el mostrador: cámbiale el precio o desactívala primero.`,
+      "duracion",
+    );
+  }
+}
+
 export class CrearPlan {
   constructor(private readonly planes: PlanRepository) {}
 
@@ -20,6 +36,7 @@ export class CrearPlan {
       (p) => p.nombre.localeCompare(validos.nombre, "es", { sensitivity: "base" }) === 0,
     );
     if (mismoNombre) throw new ErrorDeDominio(`Ya hay un plan activo llamado «${mismoNombre.nombre}». Usa otro nombre.`, "nombre");
+    await asegurarUnaVisita(this.planes, validos);
     return this.planes.crear(validos);
   }
 }
@@ -53,6 +70,7 @@ export class EditarPlan {
         cambiaNombre ? "nombre" : "duracion",
       );
     }
+    if (actual.activo) await asegurarUnaVisita(this.planes, validos, planId);
     return this.planes.actualizar(planId, validos);
   }
 }
@@ -84,6 +102,7 @@ export class CambiarEstadoPlan {
   async ejecutar(planId: string, activo: boolean): Promise<void> {
     const plan = await this.planes.obtenerPorId(planId);
     if (!plan) throw new NoEncontrado("El plan");
+    if (activo && !plan.activo) await asegurarUnaVisita(this.planes, plan, planId);
     await this.planes.cambiarEstado(planId, activo);
   }
 }

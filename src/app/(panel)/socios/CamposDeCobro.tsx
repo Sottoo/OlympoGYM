@@ -9,7 +9,7 @@ import { CampoFecha, describirFecha } from "@/presentation/components/formulario
 import { Ayuda, Etiqueta } from "@/presentation/components/formulario/Formulario";
 import { BotonDeRopa } from "@/presentation/components/formulario/marcas";
 import { SelectorSegmentado } from "@/presentation/components/SelectorSegmentado";
-import { formatearDinero } from "@/shared/formato";
+import { precioOGratis } from "@/shared/formato";
 
 export interface OpcionPlan {
   id: string;
@@ -66,7 +66,7 @@ export function CamposDeCobro({ planes, planPreferido, puedeCambiarMonto, puedeC
                   <span className="block font-bold leading-tight">{p.nombre}</span>
                   <span className="text-sm text-gris">{p.esVisita ? "Solo hoy · entra en este momento" : p.duracion}</span>
                 </span>
-                <span className="cifra text-xl">{formatearDinero(p.precio)}</span>
+                <span className="cifra text-xl">{precioOGratis(p.precio)}</span>
               </label>
             );
           })}
@@ -120,12 +120,12 @@ export function CamposDeCobro({ planes, planPreferido, puedeCambiarMonto, puedeC
               valorInicial={valores?.planId === planId && valores.monto ? valores.monto : plan?.precio}
               atributos={{ "data-que": "El monto", "data-falta": "Escribe cuánto se cobró." }}
             />
-            <Ayuda para="monto">Precio del plan: {plan ? formatearDinero(plan.precio) : "—"}.</Ayuda>
+            <Ayuda para="monto">Precio del plan: {plan ? precioOGratis(plan.precio) : "—"}.</Ayuda>
           </div>
         ) : (
           <div>
             <p className="etiqueta">Monto a cobrar</p>
-            <p className="cifra text-[1.9rem] leading-[2.75rem]">{plan ? formatearDinero(plan.precio) : "—"}</p>
+            <p className="cifra text-[1.9rem] leading-[2.75rem]">{plan ? precioOGratis(plan.precio) : "—"}</p>
             <p className="mensaje-campo">{plan?.esVisita ? "El precio de la visita." : "El precio del plan. Los descuentos los autoriza la administración."}</p>
           </div>
         )}

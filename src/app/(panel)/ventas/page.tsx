@@ -1,3 +1,4 @@
+import { describirSemana } from "@/domain/entities/Nomina";
 import { tienePermiso } from "@/infrastructure/auth/autenticacion";
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -31,7 +32,7 @@ export default async function PaginaVentas({ searchParams }: { searchParams: Pro
   const hoy = corteHoy.fecha;
   // Recepción solo ve el corte de su día; los días anteriores son de la administración.
   const dia = veOtrosDias && fecha && esFechaValida(fecha) && fecha <= hoy ? fecha : hoy;
-  const [corte, salidas, fondo, corrigeCobros, veMantenimiento, corteSemanaPasada] = await Promise.all([
+  const [corte, salidas, fondo, corrigeCobros, veMantenimiento, corteSemanaPasada, nomina, veNomina] = await Promise.all([
     dia === hoy ? corteHoy : casos.obtenerCorteDelDia.ejecutar(dia),
     casos.obtenerSalidasDelDia.ejecutar(dia),
     casos.obtenerFondoDeCaja.ejecutar(dia),
@@ -39,6 +40,8 @@ export default async function PaginaVentas({ searchParams }: { searchParams: Pro
     tienePermiso("mantenimiento.gestionar"),
     // Para comparar: el mismo día de la semana pasada (solo quien ve el dinero de otros días).
     veOtrosDias ? casos.obtenerCorteDelDia.ejecutar(sumarDias(dia, -7)) : null,
+    casos.obtenerNominaDelDia.ejecutar(dia),
+    tienePermiso("nomina.gestionar"),
   ]);
   const esHoy = dia === hoy;
   // Hoy el día va a medias: se compara con lo que se llevaba la semana pasada a esta misma hora
@@ -56,8 +59,9 @@ export default async function PaginaVentas({ searchParams }: { searchParams: Pro
         ) / 100
       : corteSemanaPasada.total;
   const efectivoCobrado = corte.porMetodo.efectivo.tienda + corte.porMetodo.efectivo.membresias;
-  // En el cajón: el fondo con que empezó + lo cobrado en efectivo − lo que salió en pagos.
-  const enCaja = Math.round(((fondo.monto ?? 0) + efectivoCobrado - salidas.efectivo) * 100) / 100;
+  // En el cajón: el fondo con que empezó + lo cobrado en efectivo − lo que salió en pagos (mantenimiento y nómina).
+  const salioDeCaja = salidas.efectivo + nomina.efectivo;
+  const enCaja = Math.round(((fondo.monto ?? 0) + efectivoCobrado - salioDeCaja) * 100) / 100;
 
   const vendibles = productos
     .map(({ producto: p }) => ({
@@ -148,15 +152,21 @@ export default async function PaginaVentas({ searchParams }: { searchParams: Pro
             },
             ...(Object.keys(METODOS_PAGO) as MetodoPago[]).map((m) => {
               const { tienda, membresias } = corte.porMetodo[m];
+              // Las membresías ya vienen con las devoluciones de ese medio restadas: se dice cuánto se devolvió.
+              const devuelto = corte.devoluciones.filter((d) => d.metodo === m).reduce((t, d) => t + d.monto, 0);
+              const neto = tienda + membresias;
               return {
                 etiqueta: METODOS_PAGO[m],
                 icono: m === "efectivo" ? ("caja" as const) : ("credencial" as const),
-                valor: formatearDinero(tienda + membresias),
-                avance: corte.total > 0 ? { valor: tienda + membresias, total: corte.total, tono: "tinta" as const } : undefined,
-                detalle: tienda + membresias > 0 ? `Tienda ${formatearDinero(tienda)} · Membresías ${formatearDinero(membresias)}` : "Sin cobros todavía",
+                valor: neto < 0 ? `−${formatearDinero(-neto)}` : formatearDinero(neto),
+                avance: corte.total > 0 && neto > 0 ? { valor: neto, total: corte.total, tono: "tinta" as const } : undefined,
+                detalle:
+                  neto === 0 && devuelto === 0
+                    ? "Sin cobros todavía"
+                    : `Tienda ${formatearDinero(tienda)} · Membresías ${formatearDinero(membresias + devuelto)}${devuelto > 0 ? ` · Devoluciones −${formatearDinero(devuelto)}` : ""}`,
               };
             }),
-            ...(fondo.monto !== null || salidas.pagos.length > 0
+            ...(fondo.monto !== null || salidas.pagos.length > 0 || nomina.pagos.length > 0
               ? [
                   {
                     etiqueta: "Efectivo en caja", icono: "check" as const,
@@ -165,7 +175,7 @@ export default async function PaginaVentas({ searchParams }: { searchParams: Pro
                     detalle: [
                       fondo.monto !== null ? `Fondo ${formatearDinero(fondo.monto)}` : "Sin fondo anotado",
                       `entró ${formatearDinero(efectivoCobrado)}`,
-                      salidas.efectivo > 0 ? `salió ${formatearDinero(salidas.efectivo)} en pagos` : "",
+                      salioDeCaja > 0 ? `salió ${formatearDinero(salioDeCaja)} en pagos` : "",
                     ]
                       .filter(Boolean)
                       .join(" · "),
@@ -177,7 +187,14 @@ export default async function PaginaVentas({ searchParams }: { searchParams: Pro
         <p className="ayuda -mt-1">
           Incluye lo cobrado en la tienda y las membresías y visitas cobradas ese día, para cuadrar la caja.
           {" «Efectivo en caja» es lo que debe haber en el cajón: el fondo con que empezó, más el efectivo cobrado"}
-          {salidas.efectivo > 0 ? ", menos los pagos de mantenimiento que salieron de la caja." : "."}
+          {corte.devoluciones.some((d) => d.metodo === "efectivo") ? ", menos las devoluciones en efectivo" : ""}
+          {salidas.efectivo > 0 && nomina.efectivo > 0
+            ? ", menos los pagos de mantenimiento y de nómina que salieron de la caja."
+            : salidas.efectivo > 0
+              ? ", menos los pagos de mantenimiento que salieron de la caja."
+              : nomina.efectivo > 0
+                ? ", menos los pagos de nómina que salieron de la caja."
+                : "."}
         </p>
         {esHoy && <FondoDelDia key={fondo.monto ?? "sin-fondo"} monto={fondo.monto} sugerido={fondo.sugerido} puedeCorregir={corrigeCobros} />}
         {!esHoy && fondo.monto === null && <p className="ayuda -mt-1">Ese día no se anotó el fondo de caja.</p>}
@@ -252,6 +269,81 @@ export default async function PaginaVentas({ searchParams }: { searchParams: Pro
               </tbody>
             </table>
           </div>
+        )}
+
+        {/* Devoluciones: dinero de membresías que se regresó ESTE día (sale de la caja de este día). */}
+        {corte.devoluciones.length > 0 && (
+          <>
+            <h3 className="rotulo pt-2">
+              Devoluciones · {corte.devoluciones.length} · −{formatearDinero(corte.totalDevoluciones)}
+            </h3>
+            <div className="superficie overflow-x-auto">
+              <table className="tabla">
+                <thead>
+                  <tr>
+                    <th>Hora</th>
+                    <th>Socio</th>
+                    <th>Pago</th>
+                    <th className="numero">Monto</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {corte.devoluciones.map((d) => (
+                    <tr key={d.id}>
+                      <td className="whitespace-nowrap tabular-nums text-tinta-suave">{formatearHora(d.creadoEn, entorno.zonaHoraria)}</td>
+                      <td>
+                        <Link href={`/socios/${d.socioId}`} className="enlace">{d.socioNombre}</Link>
+                        <span className="block text-sm text-gris">
+                          {d.planNombre ? `${d.planNombre} · ` : ""}
+                          {d.motivo}
+                        </span>
+                      </td>
+                      <td className="whitespace-nowrap text-tinta-suave">{nombreDelMetodo(d.metodo)}</td>
+                      <td className="numero font-semibold text-rojo">−{formatearDinero(d.monto)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+
+        {/* Nómina pagada este día. Quien no lleva la nómina ve el pago sin el nombre (sueldos). */}
+        {nomina.pagos.length > 0 && (
+          <>
+            <h3 className="rotulo pt-2">
+              Salidas · Nómina · {nomina.pagos.length} {nomina.pagos.length === 1 ? "pago" : "pagos"}
+            </h3>
+            <div className="superficie overflow-x-auto">
+              <table className="tabla">
+                <thead>
+                  <tr>
+                    <th>Hora</th>
+                    <th>Concepto</th>
+                    <th>Pago</th>
+                    <th className="numero">Monto</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {nomina.pagos.map((p) => (
+                    <tr key={p.id}>
+                      <td className="whitespace-nowrap tabular-nums text-tinta-suave">{formatearHora(p.creadoEn, entorno.zonaHoraria)}</td>
+                      <td>
+                        {veNomina ? (
+                          <Link href="/nomina" className="enlace">{p.empleadoNombre}</Link>
+                        ) : (
+                          <span>Pago de nómina</span>
+                        )}
+                        <span className="block text-sm text-gris">Semana {describirSemana(p.semana)}</span>
+                      </td>
+                      <td className="whitespace-nowrap text-tinta-suave">{nombreDelMetodo(p.metodo)}</td>
+                      <td className="numero font-semibold text-rojo">−{formatearDinero(p.monto)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
 
         {salidas.pagos.length > 0 && (

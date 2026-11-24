@@ -4,6 +4,7 @@ import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import { ErrorDeDominio } from "@/domain/shared/ErrorDeDominio";
 import { entorno } from "../config/entorno";
 import { respaldoAntesDeActualizar } from "../respaldo/paquete";
+import { exigirRelojCorrecto } from "../reloj/horaReal";
 import { MIGRACIONES } from "./esquema";
 import { ajustarDatos } from "./ajustesDeDatos";
 import { rutaBase, rutaFotos } from "./rutas";
@@ -75,7 +76,15 @@ export function conBooleanos<T extends Fila>(fila: T, columnas: string[]): T {
  * mezcla entre dos pantallas abiertas a la vez.
  */
 export class Sesion {
-  constructor(readonly usuario: string | null) {}
+  /**
+   * `cuidarReloj`: para lo del gimnasio (cobros, entradas, ventas, cambios), no
+   * se guarda nada si la fecha de la computadora está mal (ver horaReal.ts).
+   * Iniciar sesión y lo del sistema no lo revisan, para poder entrar y ver el aviso.
+   */
+  constructor(
+    readonly usuario: string | null,
+    private readonly cuidarReloj = false,
+  ) {}
 
   todas<T = Fila>(sql: string, ...parametros: SQLInputValue[]): T[] {
     return baseDeDatos().prepare(sql).all(...parametros) as T[];
@@ -93,6 +102,7 @@ export class Sesion {
   escribir<R>(operacion: () => R): R {
     const db = baseDeDatos();
     if ((global.__transaccionesAbiertas ?? 0) > 0) return operacion();
+    if (this.cuidarReloj) exigirRelojCorrecto(db);
     db.exec("begin immediate");
     global.__transaccionesAbiertas = 1;
     try {
